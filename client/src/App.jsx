@@ -1,4 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
+
+
+// Конфігурація API - автоматично визначає URL для production/development
+const API_BASE_URL = import.meta.env.PROD ? '/api' : 'http://localhost:3000/api';
 
 export default function App() {
     const [items, setItems] = useState([]);
@@ -94,7 +98,7 @@ export default function App() {
                 const savedPrices = loadPricesFromLocalStorage();
 
                 try {
-                    const res = await fetch("http://localhost:3000/metals");
+                    const res = await fetch(`${API_BASE_URL}/metals`);
                     if (res.ok) {
                         const data = await res.json();
 
@@ -147,14 +151,29 @@ export default function App() {
                 // Завантажуємо ціни для адмін панелі
                 loadMetalPrices();
 
-                // 2. Завантажуємо накладні ТІЛЬКИ з localStorage
-                const savedInvoices = loadInvoicesFromLocalStorage();
-                if (savedInvoices && savedInvoices.length > 0) {
-                    console.log('Використовуємо накладні з localStorage');
-                    setInvoices(savedInvoices);
-                } else {
-                    console.log('Немає накладних в localStorage, використовуємо пустий масив');
-                    setInvoices([]);
+                // 2. Завантажуємо накладні з сервера або localStorage
+                try {
+                    const res = await fetch(`${API_BASE_URL}/invoices`);
+                    if (res.ok) {
+                        const serverInvoices = await res.json();
+                        console.log('Накладні з сервера:', serverInvoices.length);
+                        setInvoices(serverInvoices);
+                        saveInvoicesToLocalStorage(serverInvoices);
+                    } else {
+                        // Якщо сервер не відповідає, беремо з localStorage
+                        const savedInvoices = loadInvoicesFromLocalStorage();
+                        if (savedInvoices && savedInvoices.length > 0) {
+                            console.log('Використовуємо накладні з localStorage');
+                            setInvoices(savedInvoices);
+                        } else {
+                            console.log('Немає накладних, використовуємо пустий масив');
+                            setInvoices([]);
+                        }
+                    }
+                } catch (invoiceError) {
+                    console.log("Не вдалося завантажити накладні з сервера:", invoiceError);
+                    const savedInvoices = loadInvoicesFromLocalStorage();
+                    setInvoices(savedInvoices || []);
                 }
 
                 setInvoicesLoaded(true);
@@ -208,37 +227,22 @@ export default function App() {
         setTotal(Math.floor(items.reduce((acc, i) => acc + (Number(i.weight) || 0) * i.price, 0)));
     }, [items]);
 
-    // Функція для синхронізації накладних з сервером (тільки для читання)
+    // Функція для синхронізації накладних з сервером
     const syncInvoicesFromServer = async () => {
         try {
-            // Ця функція тільки для читання, не для перезапису
-            const res = await fetch("http://localhost:3000/invoices");
+            const res = await fetch(`${API_BASE_URL}/invoices`);
             if (res.ok) {
                 const serverInvoices = await res.json();
-                const sortedServerInvoices = serverInvoices.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-                // Отримуємо поточні накладні з localStorage
-                const localInvoices = loadInvoicesFromLocalStorage() || [];
-
-                // Знаходимо нові накладні на сервері, яких немає в localStorage
-                const newInvoices = sortedServerInvoices.filter(serverInv =>
-                    !localInvoices.some(localInv => localInv.id === serverInv.id)
-                );
-
-                if (newInvoices.length > 0) {
-                    // Додаємо нові накладні до локальних
-                    const updatedInvoices = [...newInvoices, ...localInvoices];
-                    setInvoices(updatedInvoices);
-                    saveInvoicesToLocalStorage(updatedInvoices);
-                    console.log('Додано нові накладні з сервера:', newInvoices.length);
-                }
+                setInvoices(serverInvoices);
+                saveInvoicesToLocalStorage(serverInvoices);
+                console.log('Накладні синхронізовані з сервером:', serverInvoices.length);
             }
         } catch (error) {
             console.error("Помилка синхронізації накладних з сервером:", error);
         }
     };
 
-    // Синхронізація при завантаженні, якщо потрібно
+    // Синхронізація при завантаженні
     useEffect(() => {
         if (invoicesLoaded) {
             syncInvoicesFromServer();
@@ -248,7 +252,7 @@ export default function App() {
     // Функція для завантаження цін металів
     const loadMetalPrices = async () => {
         try {
-            const res = await fetch("http://localhost:3000/metals");
+            const res = await fetch(`${API_BASE_URL}/metals`);
             const data = await res.json();
 
             // Перевіряємо збережені ціни в localStorage
@@ -315,10 +319,10 @@ export default function App() {
             setMetalPrices(updatedPrices);
             savePricesToLocalStorage(updatedPrices);
 
-            // 2. Оновлюємо на сервері (якщо доступний)
+            // 2. Оновлюємо на сервері
             try {
-                const response = await fetch(`http://localhost:3000/metals/${id}`, {
-                    method: 'PATCH',
+                const response = await fetch(`${API_BASE_URL}/metals/${id}`, {
+                    method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
                     },
@@ -382,10 +386,10 @@ export default function App() {
             // 1. Зберігаємо всі ціни в localStorage
             savePricesToLocalStorage(metalPrices);
 
-            // 2. Оновлюємо кожен метал на сервері (якщо доступний)
+            // 2. Оновлюємо кожен метал на сервері
             const updatePromises = metalPrices.map(metal =>
-                fetch(`http://localhost:3000/metals/${metal.id}`, {
-                    method: 'PATCH',
+                fetch(`${API_BASE_URL}/metals/${metal.id}`, {
+                    method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
                     },
@@ -455,10 +459,10 @@ export default function App() {
             savePricesToLocalStorage(resetPrices);
             setMetalPrices(resetPrices);
 
-            // Оновлюємо на сервері (якщо доступний)
+            // Оновлюємо на сервері
             const updatePromises = resetPrices.map(metal =>
-                fetch(`http://localhost:3000/metals/${metal.id}`, {
-                    method: 'PATCH',
+                fetch(`${API_BASE_URL}/metals/${metal.id}`, {
+                    method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
                     },
@@ -551,11 +555,14 @@ export default function App() {
             // 2. Очищаємо стан
             setInvoices([]);
 
-            // 3. Спроба видалити з сервера (якщо доступний) - НЕ обов'язково, бо ми працюємо з localStorage
+            // 3. Видаляємо з сервера
             try {
-                // Якщо у вас є endpoint для видалення всіх накладних
-                await fetch("http://localhost:3000/invoices", {
+                await fetch(`${API_BASE_URL}/invoices`, {
                     method: 'DELETE',
+                }).then(res => {
+                    if (res.ok) {
+                        console.log("Всі накладні видалені з сервера");
+                    }
                 }).catch(() => {
                     console.log("Не вдалося видалити з сервера, продовжуємо локально");
                 });
@@ -577,23 +584,21 @@ export default function App() {
         }
 
         try {
-            // 1. Оновлюємо локальний стан
+            // 1. Видаляємо з сервера
+            try {
+                await fetch(`${API_BASE_URL}/invoices/${invoiceId}`, {
+                    method: 'DELETE',
+                });
+            } catch (serverError) {
+                console.warn("Не вдалося видалити з сервера:", serverError);
+            }
+
+            // 2. Оновлюємо локальний стан
             const updatedInvoices = invoices.filter(inv => inv.id !== invoiceId);
             setInvoices(updatedInvoices);
 
-            // 2. Зберігаємо в localStorage
+            // 3. Зберігаємо в localStorage
             saveInvoicesToLocalStorage(updatedInvoices);
-
-            // 3. Спроба видалити з сервера (необов'язково, але для синхронізації)
-            try {
-                await fetch(`http://localhost:3000/invoices/${invoiceId}`, {
-                    method: 'DELETE',
-                }).catch(() => {
-                    console.log("Не вдалося видалити з сервера, продовжуємо локально");
-                });
-            } catch (serverError) {
-                console.warn("Сервер недоступний:", serverError);
-            }
 
             alert("Накладна успішно видалена!");
         } catch (error) {
@@ -638,48 +643,68 @@ export default function App() {
         setIsSaving(true);
 
         try {
-            // Генеруємо новий ID для накладної
-            const existingIds = invoices.map(inv => inv.id).filter(id => !isNaN(id));
-            const maxId = existingIds.length > 0 ? Math.max(...existingIds) : 0;
-            const newInvoiceId = maxId + 1;
-
             const newInvoice = {
-                id: newInvoiceId,
-                created_at: new Date().toISOString(),
-                total: total,
                 items: itemsWithWeight.map(item => ({
+                    id: item.id,
                     name: item.name,
                     price: item.price,
                     weight: item.weight,
                     sum: Math.floor(Number(item.weight) * item.price)
-                }))
+                })),
+                total: total
             };
 
-            // Додаємо нову накладну до списку
-            const updatedInvoices = [newInvoice, ...invoices];
-            setInvoices(updatedInvoices);
-
-            // Зберігаємо в localStorage
-            saveInvoicesToLocalStorage(updatedInvoices);
-
-            // Спроба зберегти на сервері (необов'язково)
+            // Зберігаємо на сервері
             try {
-                await fetch("http://localhost:3000/invoices", {
+                const res = await fetch(`${API_BASE_URL}/invoices`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify(newInvoice)
-                }).catch(() => {
-                    console.log("Не вдалося зберегти на сервері, продовжуємо локально");
                 });
-            } catch (serverError) {
-                console.warn("Сервер недоступний:", serverError);
-            }
 
-            viewReceipt(newInvoice);
-            resetForm();
-            alert(`Накладна №${newInvoice.id} успішно збережена!`);
+                if (res.ok) {
+                    const result = await res.json();
+
+                    // Оновлюємо список накладних
+                    await syncInvoicesFromServer();
+
+                    viewReceipt({
+                        id: result.id,
+                        created_at: result.createdAt,
+                        total: total,
+                        items: itemsWithWeight
+                    });
+
+                    resetForm();
+                    alert(`Накладна №${result.id} успішно збережена!`);
+                } else {
+                    throw new Error('Помилка збереження');
+                }
+            } catch (serverError) {
+                console.warn("Не вдалося зберегти на сервері:", serverError);
+
+                // Локальне збереження
+                const existingIds = invoices.map(inv => inv.id).filter(id => !isNaN(id));
+                const maxId = existingIds.length > 0 ? Math.max(...existingIds) : 0;
+                const newInvoiceId = maxId + 1;
+
+                const localInvoice = {
+                    id: newInvoiceId,
+                    created_at: new Date().toISOString(),
+                    total: total,
+                    items: itemsWithWeight
+                };
+
+                const updatedInvoices = [localInvoice, ...invoices];
+                setInvoices(updatedInvoices);
+                saveInvoicesToLocalStorage(updatedInvoices);
+
+                viewReceipt(localInvoice);
+                resetForm();
+                alert(`Накладна №${newInvoiceId} збережена локально!`);
+            }
 
         } catch (error) {
             console.error("Помилка при збереженні накладної:", error);
@@ -1216,7 +1241,7 @@ ${receiptText}
 
     const testServerConnection = async () => {
         try {
-            const res = await fetch("http://localhost:3000/metals");
+            const res = await fetch(`${API_BASE_URL}/metals`);
             const data = await res.json();
             alert(`Сервер працює! Отримано ${data.length} металів`);
         } catch (error) {
@@ -1365,13 +1390,13 @@ ${receiptText}
                             fontWeight: '500',
                             marginBottom: '5px'
                         }}>
-                            Дані зберігаються локально
+                            Дані зберігаються локально та на сервері
                         </div>
                         <div style={{
                             color: '#aaa',
                             fontSize: '0.9rem'
                         }}>
-                            Усі зміни (ціни та накладні) зберігаються в вашому браузері і не зникають при оновленні сторінки.
+                            Усі зміни синхронізуються з сервером та зберігаються в вашому браузері.
                         </div>
                     </div>
                 </div>
@@ -2009,7 +2034,7 @@ ${receiptText}
                                 margin: '0',
                                 fontSize: '1rem',
                                 maxWidth: '400px',
-                                margin: '0 auto'
+                                // margin: '0 auto'
                             }}>
                                 {fromDate || toDate
                                     ? 'За обраний період накладні не знайдено. Спробуйте змінити дати.'
@@ -2115,7 +2140,7 @@ ${receiptText}
                                 }}>
                                     <li>Змініть ціну для кожного металу у відповідному полі</li>
                                     <li>Натисніть "💾 Зберегти" для кожного металу окремо для постійного збереження</li>
-                                    <li>💡 <strong>Ціни зберігаються в браузері</strong> та залишаються після оновлення сторінки</li>
+                                    <li>💡 <strong>Ціни зберігаються в браузері та на сервері</strong></li>
                                     <li>Ціни можна скинути до значень за замовчуванням кнопкою "🔄 Скинути до стандартних"</li>
                                     <li>Незбережені зміни можна скасувати кнопкою "❌ Скасувати зміни"</li>
                                 </ul>
@@ -2484,9 +2509,8 @@ ${receiptText}
                                     fontSize: '0.9rem',
                                     lineHeight: '1.5'
                                 }}>
-                                    Ціни автоматично зберігаються в вашому браузері (localStorage).
+                                    Ціни автоматично зберігаються в вашому браузері (localStorage) та на сервері.
                                     Вони залишаться навіть після оновлення сторінки або закриття браузера.
-                                    Для повного скидання до стандартних цін використовуйте кнопку "🔄 Скинути до стандартних".
                                 </p>
                             </div>
                         </div>

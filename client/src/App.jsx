@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 
 // Конфігурація API - автоматично визначає URL для production/development
@@ -43,16 +43,16 @@ export default function App() {
     ];
 
     // Функція для збереження цін в localStorage
-    const savePricesToLocalStorage = (prices) => {
+    const savePricesToLocalStorage = useCallback((prices) => {
         try {
             localStorage.setItem('metalPrices', JSON.stringify(prices));
         } catch (error) {
             console.error("Помилка збереження цін в localStorage:", error);
         }
-    };
+    }, []);
 
     // Функція для завантаження цін з localStorage
-    const loadPricesFromLocalStorage = () => {
+    const loadPricesFromLocalStorage = useCallback(() => {
         try {
             const saved = localStorage.getItem('metalPrices');
             if (saved) {
@@ -62,20 +62,20 @@ export default function App() {
             console.error("Помилка завантаження цін з localStorage:", error);
         }
         return null;
-    };
+    }, []);
 
     // Функція для збереження накладних в localStorage
-    const saveInvoicesToLocalStorage = (invoices) => {
+    const saveInvoicesToLocalStorage = useCallback((invoices) => {
         try {
             localStorage.setItem('invoices', JSON.stringify(invoices));
             console.log('Накладні збережено в localStorage:', invoices.length);
         } catch (error) {
             console.error("Помилка збереження накладних в localStorage:", error);
         }
-    };
+    }, []); // Порожній масив - функція не залежить від змінних
 
     // Функція для завантаження накладних з localStorage
-    const loadInvoicesFromLocalStorage = () => {
+    const loadInvoicesFromLocalStorage = useCallback(() => {
         try {
             const saved = localStorage.getItem('invoices');
             if (saved) {
@@ -87,7 +87,7 @@ export default function App() {
             console.error("Помилка завантаження накладних з localStorage:", error);
         }
         return null;
-    };
+    }, []);
 
     // Завантаження даних при першому рендері
     useEffect(() => {
@@ -221,14 +221,15 @@ export default function App() {
         };
 
         loadInitialData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
         setTotal(Math.floor(items.reduce((acc, i) => acc + (Number(i.weight) || 0) * i.price, 0)));
     }, [items]);
 
-    // Функція для синхронізації накладних з сервером
-    const syncInvoicesFromServer = async () => {
+    // Функція для синхронізації накладних з сервером (useCallback для стабільності)
+    const syncInvoicesFromServer = useCallback(async () => {
         try {
             const res = await fetch(`${API_BASE_URL}/invoices`);
             if (res.ok) {
@@ -240,14 +241,14 @@ export default function App() {
         } catch (error) {
             console.error("Помилка синхронізації накладних з сервером:", error);
         }
-    };
+    }, [saveInvoicesToLocalStorage, setInvoices]);
 
     // Синхронізація при завантаженні
     useEffect(() => {
         if (invoicesLoaded) {
             syncInvoicesFromServer();
         }
-    }, [invoicesLoaded]);
+    }, [invoicesLoaded, syncInvoicesFromServer]);
 
     // Функція для завантаження цін металів
     const loadMetalPrices = async () => {

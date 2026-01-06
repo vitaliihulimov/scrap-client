@@ -32,22 +32,22 @@ const dbPath = process.env.NODE_ENV === "production"
 console.log("📁 Database path:", dbPath);
 const db = new Database(dbPath);
 
-// ====== СПИСОК МЕТАЛІВ ======
+// ====== МЕТАЛИ ======
 app.get("/api/metals", (req, res) => {
     const today = new Date().toISOString().split("T")[0];
 
     db.exec(`
-    CREATE TABLE IF NOT EXISTS metals (
-      id INTEGER PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE
-    );
-    CREATE TABLE IF NOT EXISTS daily_prices (
-      metal_id INTEGER,
-      price INTEGER,
-      date TEXT,
-      PRIMARY KEY (metal_id, date)
-    );
-  `);
+        CREATE TABLE IF NOT EXISTS metals (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE IF NOT EXISTS daily_prices (
+            metal_id INTEGER,
+            price INTEGER,
+            date TEXT,
+            PRIMARY KEY (metal_id, date)
+        );
+    `);
 
     const metalCount = db.prepare("SELECT COUNT(*) as count FROM metals").get().count;
 
@@ -74,17 +74,16 @@ app.get("/api/metals", (req, res) => {
     }
 
     const metals = db.prepare(`
-    SELECT m.id, m.name, COALESCE(dp.price, 0) as price
-    FROM metals m
-    LEFT JOIN daily_prices dp
-      ON m.id = dp.metal_id AND dp.date = ?
-    ORDER BY m.id
-  `).all(today);
+        SELECT m.id, m.name, COALESCE(dp.price, 0) as price
+        FROM metals m
+        LEFT JOIN daily_prices dp
+          ON m.id = dp.metal_id AND dp.date = ?
+        ORDER BY m.id
+    `).all(today);
 
     res.json(metals);
 });
 
-// ====== ОНОВЛЕННЯ ЦІНИ ======
 app.put("/api/metals/:id", (req, res) => {
     const { id } = req.params;
     const { price } = req.body;
@@ -115,26 +114,26 @@ app.post("/api/invoices", (req, res) => {
     const total = Math.floor(items.reduce((s, i) => s + (Number(i.weight) || 0) * i.price, 0));
 
     db.exec(`
-    CREATE TABLE IF NOT EXISTS invoices (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
-      created_at TEXT,
-      total INTEGER
-    );
-    CREATE TABLE IF NOT EXISTS invoice_items (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      invoice_id INTEGER,
-      metal_id INTEGER,
-      weight REAL,
-      price INTEGER,
-      sum INTEGER
-    );
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      pin TEXT NOT NULL UNIQUE
-    );
-  `);
+        CREATE TABLE IF NOT EXISTS invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            created_at TEXT,
+            total INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS invoice_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id INTEGER,
+            metal_id INTEGER,
+            weight REAL,
+            price INTEGER,
+            sum INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            pin TEXT NOT NULL UNIQUE
+        );
+    `);
 
     const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
     if (userCount === 0) db.prepare("INSERT INTO users (name, pin) VALUES (?, ?)").run("Admin", "1234");
@@ -161,11 +160,11 @@ app.get("/api/invoices", (req, res) => {
         const invoices = db.prepare("SELECT * FROM invoices ORDER BY created_at DESC").all();
         invoices.forEach(inv => {
             inv.items = db.prepare(`
-        SELECT ii.*, m.name 
-        FROM invoice_items ii
-        LEFT JOIN metals m ON ii.metal_id = m.id
-        WHERE ii.invoice_id = ?
-      `).all(inv.id);
+                SELECT ii.*, m.name 
+                FROM invoice_items ii
+                LEFT JOIN metals m ON ii.metal_id = m.id
+                WHERE ii.invoice_id = ?
+            `).all(inv.id);
         });
         res.json(invoices);
     } catch (err) {
@@ -198,7 +197,7 @@ app.delete("/api/invoices", (req, res) => {
     }
 });
 
-// ====== ДРУК НАКЛАДНОЇ ======
+// ====== PRINT ======
 app.post("/api/print", (req, res) => {
     const { invoiceId, items, total } = req.body;
     try {
@@ -215,7 +214,7 @@ app.post("/api/print", (req, res) => {
     }
 });
 
-// ====== Health check ======
+// ====== Health ======
 app.get("/api/health", (req, res) => {
     res.status(200).json({
         status: "OK",
@@ -230,10 +229,10 @@ app.get("/api", (req, res) => {
     res.json({ message: "Scrap Metal API is running", version: "1.0.0" });
 });
 
-// ====== React static files ======
+// ====== React SPA ======
 const clientBuildPath = path.join(__dirname, "..", "client", "dist");
 app.use(express.static(clientBuildPath));
-app.get("*", (req, res) => {
+app.get(/^\/(?!api).*/, (req, res) => {
     res.sendFile(path.join(clientBuildPath, "index.html"));
 });
 

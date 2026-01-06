@@ -1,5 +1,6 @@
+# render.yaml
 services:
-  # Backend
+  # ====== Backend ======
   - type: web
     name: scrap-metal-api
     env: node
@@ -15,7 +16,7 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
 
-  # Frontend
+  # ====== Frontend ======
   - type: web
     name: scrap-metal-app
     env: static

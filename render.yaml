@@ -1,12 +1,12 @@
 services:
-  # Бекенд сервіс
+  # Backend
   - type: web
     name: scrap-metal-api
     env: node
     plan: free
     rootDir: ./backend
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node server.js
     envVars:
       - key: NODE_ENV
         value: production
@@ -15,7 +15,7 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
 
-  # Фронтенд сервіс
+  # Frontend
   - type: web
     name: scrap-metal-app
     env: static

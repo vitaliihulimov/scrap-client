@@ -7,6 +7,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use(cors({
+    origin: ['https://scrap-metal-app.onrender.com', 'http://localhost:5173'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
+
 // Шлях до бази даних на Render
 const dbPath = process.env.NODE_ENV === 'production'
     ? '/opt/render/project/src/warehouse.db'
@@ -318,4 +324,22 @@ app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📁 Database: ${dbPath}`);
     console.log(`🌐 Open: http://localhost:${PORT}`);
+});
+
+// Health check endpoint для Render
+app.get('/api/health', (req, res) => {
+    res.status(200).json({
+        status: 'OK',
+        service: 'scrap-metal-api',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime()
+    });
+});
+
+// Додай також root endpoint для тесту
+app.get('/api', (req, res) => {
+    res.json({
+        message: 'Scrap Metal API is running',
+        version: '1.0.0'
+    });
 });

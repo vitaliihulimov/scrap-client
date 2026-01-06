@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 
 
 // Конфігурація API - автоматично визначає URL для production/development
-const API_BASE_URL = import.meta.env.PROD ? '/api' : 'http://localhost:3000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL ?
+    `${import.meta.env.VITE_API_URL}/api` :
+    'http://localhost:3000/api';
 
 export default function App() {
     const [items, setItems] = useState([]);
@@ -256,7 +258,7 @@ export default function App() {
             const res = await fetch(`${API_BASE_URL}/metals`);
             const data = await res.json();
 
-            // Перевіряємо збережені ціни в localStorage
+            // Перевіряємо збережені ціни в localStorage чи ні
             const savedPrices = loadPricesFromLocalStorage();
 
             let metalsWithDefaults;

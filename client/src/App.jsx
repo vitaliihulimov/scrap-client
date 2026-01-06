@@ -2034,7 +2034,7 @@ ${receiptText}
                                 margin: '0',
                                 fontSize: '1rem',
                                 maxWidth: '400px',
-                                // margin: '0 auto'
+
                             }}>
                                 {fromDate || toDate
                                     ? 'За обраний період накладні не знайдено. Спробуйте змінити дати.'

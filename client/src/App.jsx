@@ -1,10 +1,83 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
-
 // Конфігурація API - автоматично визначає URL для production/development
 const API_BASE_URL = import.meta.env.VITE_API_URL ?
     `${import.meta.env.VITE_API_URL}/api` :
     'http://localhost:3000/api';
+
+// Початкові відсотки засмічення для кожного металу
+const initialContaminationRates = {
+    // Мідь та мідні сплави
+    "Мідь блеск": 0,
+    "Мідь М1": 0,
+    "Мідь М3": 1,
+    "Мідь фосфорна": 0,
+    "Мідна стружка": 1,
+    "Мідна лента": 1,
+    "Мідний скрап": 1,
+
+    // Латунь
+    "Латунь": 1,
+    "Латунний радіатор": 2,
+    "Латунна стружка": 3,
+    "Латунний скрап": 1,
+    "Стакан великий": 1,
+    "Стакан маленький": 1,
+    "ОЦС": 1,
+    "БРАЖ": 1,
+
+    // Алюміній
+    "Алюмінієвий провод": 0.5,
+    "Алюміній піщевий": 0.5,
+    "Алюмінієвий профіль": 0.5,
+    "Алюмінієві діскі": 1,
+    "Алюміній побутовий": 1,
+    "АМГ": 2,
+    "Алюмінієва банка": 3,
+    "Алюмінієвий радіатор": 3,
+    "Алюміній самолет": 5,
+    "Алюміній военка": 25,
+    "Алюміній моторняк": 1,
+    "Алюмінієва стружка": 5,
+    "Алюмінієвий скрап": 1,
+
+    // Нержавіюча сталь
+    "Нержавейка (10% нікелю)": 0.5,
+    "Нержавейка (10% Б55)": 0,
+    "Нержавейка (9% нікелю)": 0.5,
+    "Нержавейка (8% нікелю)": 0.5,
+    "Нержавейка (0% нікелю)": 0.5,
+    "Височка скрап": 1,
+    "Нержавіюча стружка (10 9 8)": 0.5,
+    "Нержавіючий скрап": 1,
+    "Нікель": 0,
+    "Нікель лом": 1,
+
+    // Кольорові метали
+    "ЦАМ": 3,
+    "Магній": 3,
+    "Цинк": 0,
+
+    // Свинець та АКБ
+    "Свинець кабельний": 1,
+    "Свинець звичайний": 1,
+    "Свинець шиномонтаж": 0,
+    "АКБ білий": 1,
+    "АКБ чорний": 1,
+    "ТНЖ великі": 3,
+    "ТНЖ маленькі": 3,
+    "ТНЖ 4-к": 3,
+
+    // Рідкісні метали
+    "Титан": 0.5,
+
+    // Сплави
+    "Кремній": 1,
+    "Мельхіор": 1,
+    "МН": 1,
+    "Олово": 0,
+    "Припой": 0
+};
 
 export default function App() {
     const [items, setItems] = useState([]);
@@ -21,28 +94,149 @@ export default function App() {
     const [metalPrices, setMetalPrices] = useState([]);
     const [isSavingPrice, setIsSavingPrice] = useState(false);
     const [tempPrices, setTempPrices] = useState({});
+    const [contaminationRates, setContaminationRates] = useState(initialContaminationRates);
+    const [tempContamination, setTempContamination] = useState({});
 
     const initialItemsRef = useRef([]);
     const [invoicesLoaded, setInvoicesLoaded] = useState(false);
 
+    // Функція для округлення ціни з урахуванням типу металу
+    const roundPrice = (price, metalName) => {
+        if (metalName === "Чорний метал") {
+            // Округлення до 1 десяткового знаку для чорного металу
+            return Math.round(price * 10) / 10;
+        } else {
+            // Округлення до цілого числа для всіх інших
+            return Math.round(price);
+        }
+    };
+
+    // Функція для округлення ціни вниз (до меншого цілого) з урахуванням типу металу
+    const roundPriceDown = (price, metalName) => {
+        if (metalName === "Чорний метал") {
+            // Для чорного металу округлення до 1 десяткового знаку вниз
+            return Math.floor(price * 10) / 10;
+        } else {
+            // Для всіх інших металів округлення вниз до цілого числа
+            return Math.floor(price);
+        }
+    };
+
+    // Функція для розрахунку ціни з урахуванням засмічення
+    const calculatePriceWithContamination = (metalName, originalPrice, customRate = null) => {
+        const rate = customRate !== null ? customRate : (contaminationRates[metalName] || 0);
+
+        // Розрахунок ціни після засмічення
+        const priceAfterContamination = originalPrice * (1 - rate / 100);
+
+        // Округлення вниз згідно з правилами
+        return roundPriceDown(priceAfterContamination, metalName);
+    };
+
+    // Функція для розрахунку суми (вага * ціна з засміченням)
+    const calculateSum = (weight, price, metalName, contaminationRate) => {
+        if (!weight || weight <= 0) return 0;
+        const priceWithCont = calculatePriceWithContamination(metalName, price, contaminationRate);
+        return Math.floor(weight * priceWithCont);
+    };
+
+    // ОНОВЛЕНІ тестові метали з вашим списком
     const initialTestMetals = [
-        { id: 1, name: "Мідь", price: 388, weight: "", initialPrice: 388 },
-        { id: 2, name: "Латунь", price: 235, weight: "", initialPrice: 235 },
-        { id: 3, name: "Радіатор латунний", price: 210, weight: "", initialPrice: 210 },
-        { id: 4, name: "Алюміній побутовий", price: 65, weight: "", initialPrice: 65 },
-        { id: 5, name: "Алюміній електротехнічний", price: 80, weight: "", initialPrice: 80 },
-        { id: 6, name: "Нержавіюча сталь", price: 45, weight: "", initialPrice: 45 },
-        { id: 7, name: "Магній", price: 75, weight: "", initialPrice: 75 },
-        { id: 8, name: "ЦАМ", price: 95, weight: "", initialPrice: 95 },
-        { id: 9, name: "Стружка мідна", price: 320, weight: "", initialPrice: 320 },
-        { id: 10, name: "Стружка латунна", price: 180, weight: "", initialPrice: 180 },
-        { id: 11, name: "Свинець", price: 45, weight: "", initialPrice: 45 },
-        { id: 12, name: "Свинець кабельний", price: 55, weight: "", initialPrice: 55 },
-        { id: 13, name: "Акумулятор білий", price: 20, weight: "", initialPrice: 20 },
-        { id: 14, name: "Акумулятор чорний", price: 18, weight: "", initialPrice: 18 },
-        { id: 15, name: "Титан", price: 160, weight: "", initialPrice: 160 },
-        { id: 16, name: "Чорний металобрухт", price: 8, weight: "", initialPrice: 8 }
+        // Мідь та мідні сплави
+        { id: 1, name: "Мідь блеск", price: 388, weight: "", initialPrice: 388 },
+        { id: 2, name: "Мідь М1", price: 388, weight: "", initialPrice: 388 },
+        { id: 3, name: "Мідь М3", price: 388, weight: "", initialPrice: 388 },
+        { id: 4, name: "Мідь фосфорна", price: 388, weight: "", initialPrice: 388 },
+        { id: 5, name: "Мідна стружка", price: 320, weight: "", initialPrice: 320 },
+        { id: 6, name: "Мідна лента", price: 380, weight: "", initialPrice: 380 },
+        { id: 7, name: "Мідний скрап", price: 350, weight: "", initialPrice: 350 },
+
+        // Латунь
+        { id: 8, name: "Латунь", price: 235, weight: "", initialPrice: 235 },
+        { id: 9, name: "Латунний радіатор", price: 210, weight: "", initialPrice: 210 },
+        { id: 10, name: "Латунна стружка", price: 180, weight: "", initialPrice: 180 },
+        { id: 11, name: "Латунний скрап", price: 220, weight: "", initialPrice: 220 },
+        { id: 12, name: "Стакан великий", price: 230, weight: "", initialPrice: 230 },
+        { id: 13, name: "Стакан маленький", price: 230, weight: "", initialPrice: 230 },
+        { id: 14, name: "ОЦС", price: 220, weight: "", initialPrice: 220 },
+        { id: 15, name: "БРАЖ", price: 220, weight: "", initialPrice: 220 },
+
+        // Алюміній
+        { id: 16, name: "Алюмінієвий провод", price: 70, weight: "", initialPrice: 70 },
+        { id: 17, name: "Алюміній піщевий", price: 65, weight: "", initialPrice: 65 },
+        { id: 18, name: "Алюмінієвий профіль", price: 65, weight: "", initialPrice: 65 },
+        { id: 19, name: "Алюмінієві діскі", price: 60, weight: "", initialPrice: 60 },
+        { id: 20, name: "Алюміній побутовий", price: 55, weight: "", initialPrice: 55 },
+        { id: 21, name: "АМГ", price: 75, weight: "", initialPrice: 75 },
+        { id: 22, name: "Алюмінієва банка", price: 50, weight: "", initialPrice: 50 },
+        { id: 23, name: "Алюмінієвий радіатор", price: 65, weight: "", initialPrice: 65 },
+        { id: 24, name: "Алюміній самолет", price: 85, weight: "", initialPrice: 85 },
+        { id: 25, name: "Алюміній военка", price: 95, weight: "", initialPrice: 95 },
+        { id: 26, name: "Алюміній моторняк", price: 75, weight: "", initialPrice: 75 },
+        { id: 27, name: "Алюмінієва стружка", price: 45, weight: "", initialPrice: 45 },
+        { id: 28, name: "Алюмінієвий скрап", price: 50, weight: "", initialPrice: 50 },
+
+        // Нержавіюча сталь
+        { id: 29, name: "Нержавейка (10% нікелю)", price: 90, weight: "", initialPrice: 90 },
+        { id: 30, name: "Нержавейка (10% Б55)", price: 90, weight: "", initialPrice: 90 },
+        { id: 31, name: "Нержавейка (9% нікелю)", price: 85, weight: "", initialPrice: 85 },
+        { id: 32, name: "Нержавейка (8% нікелю)", price: 80, weight: "", initialPrice: 80 },
+        { id: 33, name: "Нержавейка (0% нікелю)", price: 45, weight: "", initialPrice: 45 },
+        { id: 34, name: "Височка скрап", price: 70, weight: "", initialPrice: 70 },
+        { id: 35, name: "Нержавіюча стружка (10 9 8)", price: 60, weight: "", initialPrice: 60 },
+        { id: 36, name: "Нержавіючий скрап", price: 65, weight: "", initialPrice: 65 },
+        { id: 37, name: "Нікель", price: 350, weight: "", initialPrice: 350 },
+        { id: 38, name: "Нікель лом", price: 320, weight: "", initialPrice: 320 },
+
+        // Кольорові метали
+        { id: 39, name: "ЦАМ", price: 95, weight: "", initialPrice: 95 },
+        { id: 40, name: "Магній", price: 75, weight: "", initialPrice: 75 },
+        { id: 41, name: "Цинк", price: 50, weight: "", initialPrice: 50 },
+
+        // Свинець та АКБ
+        { id: 42, name: "Свинець кабельний", price: 55, weight: "", initialPrice: 55 },
+        { id: 43, name: "Свинець звичайний", price: 45, weight: "", initialPrice: 45 },
+        { id: 44, name: "Свинець шиномонтаж", price: 45, weight: "", initialPrice: 45 },
+        { id: 45, name: "АКБ білий", price: 20, weight: "", initialPrice: 20 },
+        { id: 46, name: "АКБ чорний", price: 18, weight: "", initialPrice: 18 },
+        { id: 47, name: "ТНЖ великі", price: 25, weight: "", initialPrice: 25 },
+        { id: 48, name: "ТНЖ маленькі", price: 25, weight: "", initialPrice: 25 },
+        { id: 49, name: "ТНЖ 4-к", price: 25, weight: "", initialPrice: 25 },
+
+        // Рідкісні метали
+        { id: 50, name: "Титан", price: 160, weight: "", initialPrice: 160 },
+
+        // Сплави
+        { id: 51, name: "Бабіт (16)", price: 120, weight: "", initialPrice: 120 },
+        { id: 52, name: "Бабіт (82)", price: 140, weight: "", initialPrice: 140 },
+        { id: 53, name: "Кремній", price: 80, weight: "", initialPrice: 80 },
+        { id: 54, name: "Мельхіор", price: 200, weight: "", initialPrice: 200 },
+        { id: 55, name: "МН", price: 200, weight: "", initialPrice: 200 },
+        { id: 56, name: "Олово", price: 300, weight: "", initialPrice: 300 },
+        { id: 57, name: "Припой", price: 280, weight: "", initialPrice: 280 },
+
+        // Швидкорізи та спецсплави
+        { id: 58, name: "Рапід Р6М5", price: 150, weight: "", initialPrice: 150 },
+        { id: 59, name: "Рапід Р18", price: 180, weight: "", initialPrice: 180 },
+        { id: 60, name: "Вольфрам", price: 400, weight: "", initialPrice: 400 },
+        { id: 61, name: "Молібден", price: 350, weight: "", initialPrice: 350 },
+        { id: 62, name: "Феромолібден", price: 250, weight: "", initialPrice: 250 },
+        { id: 63, name: "Ферованадій", price: 220, weight: "", initialPrice: 220 },
+
+        // Чорний метал
+        { id: 64, name: "Чорний метал", price: 8, weight: "", initialPrice: 8 }
     ];
+
+    // Функція для очищення localStorage
+    const clearLocalStorage = () => {
+        try {
+            localStorage.removeItem('metalPrices');
+            localStorage.removeItem('contaminationRates');
+            console.log('Очищено localStorage');
+        } catch (error) {
+            console.error("Помилка очищення localStorage:", error);
+        }
+    };
 
     // Функція для збереження цін в localStorage
     const savePricesToLocalStorage = useCallback((prices) => {
@@ -50,6 +244,15 @@ export default function App() {
             localStorage.setItem('metalPrices', JSON.stringify(prices));
         } catch (error) {
             console.error("Помилка збереження цін в localStorage:", error);
+        }
+    }, []);
+
+    // Функція для збереження відсотків засмічення в localStorage
+    const saveContaminationRatesToLocalStorage = useCallback((rates) => {
+        try {
+            localStorage.setItem('contaminationRates', JSON.stringify(rates));
+        } catch (error) {
+            console.error("Помилка збереження відсотків засмічення в localStorage:", error);
         }
     }, []);
 
@@ -66,6 +269,19 @@ export default function App() {
         return null;
     }, []);
 
+    // Функція для завантаження відсотків засмічення з localStorage
+    const loadContaminationRatesFromLocalStorage = useCallback(() => {
+        try {
+            const saved = localStorage.getItem('contaminationRates');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+        } catch (error) {
+            console.error("Помилка завантаження відсотків засмічення з localStorage:", error);
+        }
+        return null;
+    }, []);
+
     // Функція для збереження накладних в localStorage
     const saveInvoicesToLocalStorage = useCallback((invoices) => {
         try {
@@ -74,7 +290,7 @@ export default function App() {
         } catch (error) {
             console.error("Помилка збереження накладних в localStorage:", error);
         }
-    }, []); // Порожній масив - функція не залежить від змінних
+    }, []);
 
     // Функція для завантаження накладних з localStorage
     const loadInvoicesFromLocalStorage = useCallback(() => {
@@ -95,63 +311,44 @@ export default function App() {
     useEffect(() => {
         const loadInitialData = async () => {
             try {
-                // 1. Завантажуємо метали (спочатку з localStorage, потім з сервера)
+                // Завантажуємо відсотки засмічення з localStorage
+                const savedRates = loadContaminationRatesFromLocalStorage();
+                if (savedRates) {
+                    setContaminationRates(savedRates);
+                }
+
+                // 1. Завантажуємо метали з сервера
                 let formattedData;
-                const savedPrices = loadPricesFromLocalStorage();
 
                 try {
                     const res = await fetch(`${API_BASE_URL}/metals`);
                     if (res.ok) {
                         const data = await res.json();
+                        console.log('Метали з сервера:', data);
 
-                        if (savedPrices) {
-                            // Використовуємо збережені ціни
-                            formattedData = data.map(m => {
-                                const savedPrice = savedPrices.find(p => p.id === m.id);
-                                return {
-                                    ...m,
-                                    price: savedPrice ? savedPrice.price : m.price,
-                                    weight: "",
-                                    initialPrice: savedPrice ? savedPrice.price : m.price
-                                };
-                            });
-                        } else {
-                            // Використовуємо ціни з сервера
-                            formattedData = data.map(m => ({
-                                ...m,
-                                weight: "",
-                                initialPrice: m.price
-                            }));
-                        }
+                        // Використовуємо дані з сервера
+                        formattedData = data.map(m => ({
+                            ...m,
+                            weight: "",
+                            initialPrice: m.price
+                        }));
                     } else {
                         throw new Error('Сервер не відповідає');
                     }
                 } catch (serverError) {
                     console.log("Сервер недоступний, використовуємо тестові дані:", serverError);
-
-                    if (savedPrices) {
-                        formattedData = initialTestMetals.map(metal => {
-                            const savedPrice = savedPrices.find(p => p.id === metal.id);
-                            return {
-                                ...metal,
-                                price: savedPrice ? savedPrice.price : metal.price,
-                                initialPrice: savedPrice ? savedPrice.price : metal.price,
-                                defaultPrice: metal.price
-                            };
-                        });
-                    } else {
-                        formattedData = initialTestMetals.map(metal => ({
-                            ...metal,
-                            defaultPrice: metal.price
-                        }));
-                    }
+                    // Використовуємо тестові дані
+                    formattedData = initialTestMetals.map(metal => ({
+                        ...metal,
+                        defaultPrice: metal.price
+                    }));
                 }
 
                 setItems(formattedData);
                 initialItemsRef.current = formattedData;
 
                 // Завантажуємо ціни для адмін панелі
-                loadMetalPrices();
+                setMetalPrices(formattedData);
 
                 // 2. Завантажуємо накладні з сервера або localStorage
                 try {
@@ -159,14 +356,88 @@ export default function App() {
                     if (res.ok) {
                         const serverInvoices = await res.json();
                         console.log('Накладні з сервера:', serverInvoices.length);
-                        setInvoices(serverInvoices);
-                        saveInvoicesToLocalStorage(serverInvoices);
+
+                        // Перераховуємо всі накладні з правильним округленням
+                        const processedInvoices = serverInvoices.map(inv => {
+                            const processedItems = inv.items.map(item => {
+                                const rate = item.contaminationRate || contaminationRates[item.name] || 0;
+
+                                // Розраховуємо правильну ціну з засміченням
+                                let priceWithCont;
+                                if (item.name === "Чорний метал") {
+                                    priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
+                                } else {
+                                    priceWithCont = Math.floor(item.price * (1 - rate / 100));
+                                }
+
+                                // Розраховуємо правильну суму
+                                const weight = Number(item.weight) || 0;
+                                const correctSum = Math.floor(weight * priceWithCont);
+
+                                return {
+                                    ...item,
+                                    contaminationRate: rate,
+                                    priceWithContamination: priceWithCont,
+                                    sum: correctSum
+                                };
+                            });
+
+                            // Перераховуємо загальну суму
+                            const correctTotal = processedItems.reduce((acc, item) => acc + item.sum, 0);
+
+                            return {
+                                ...inv,
+                                items: processedItems,
+                                total: correctTotal
+                            };
+                        });
+
+                        setInvoices(processedInvoices);
+                        saveInvoicesToLocalStorage(processedInvoices);
                     } else {
                         // Якщо сервер не відповідає, беремо з localStorage
                         const savedInvoices = loadInvoicesFromLocalStorage();
                         if (savedInvoices && savedInvoices.length > 0) {
                             console.log('Використовуємо накладні з localStorage');
-                            setInvoices(savedInvoices);
+
+                            // Перераховуємо всі накладні з правильним округленням
+                            const processedInvoices = savedInvoices.map(inv => {
+                                const processedItems = inv.items.map(item => {
+                                    const rate = item.contaminationRate || contaminationRates[item.name] || 0;
+
+                                    // Розраховуємо правильну ціну з засміченням
+                                    let priceWithCont;
+                                    if (item.name === "Чорний метал") {
+                                        priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
+                                    } else {
+                                        priceWithCont = Math.floor(item.price * (1 - rate / 100));
+                                    }
+
+                                    // Розраховуємо правильну суму
+                                    const weight = Number(item.weight) || 0;
+                                    const correctSum = Math.floor(weight * priceWithCont);
+
+                                    return {
+                                        ...item,
+                                        contaminationRate: rate,
+                                        priceWithContamination: priceWithCont,
+                                        sum: correctSum
+                                    };
+                                });
+
+                                // Перераховуємо загальну суму
+                                const correctTotal = processedItems.reduce((acc, item) => acc + item.sum, 0);
+
+                                return {
+                                    ...inv,
+                                    items: processedItems,
+                                    total: correctTotal
+                                };
+                            });
+
+                            setInvoices(processedInvoices);
+                            // Зберігаємо оновлені накладні назад в localStorage
+                            saveInvoicesToLocalStorage(processedInvoices);
                         } else {
                             console.log('Немає накладних, використовуємо пустий масив');
                             setInvoices([]);
@@ -175,7 +446,46 @@ export default function App() {
                 } catch (invoiceError) {
                     console.log("Не вдалося завантажити накладні з сервера:", invoiceError);
                     const savedInvoices = loadInvoicesFromLocalStorage();
-                    setInvoices(savedInvoices || []);
+                    if (savedInvoices && savedInvoices.length > 0) {
+                        // Перераховуємо всі накладні з правильним округленням
+                        const processedInvoices = savedInvoices.map(inv => {
+                            const processedItems = inv.items.map(item => {
+                                const rate = item.contaminationRate || contaminationRates[item.name] || 0;
+
+                                // Розраховуємо правильну ціну з засміченням
+                                let priceWithCont;
+                                if (item.name === "Чорний метал") {
+                                    priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
+                                } else {
+                                    priceWithCont = Math.floor(item.price * (1 - rate / 100));
+                                }
+
+                                // Розраховуємо правильну суму
+                                const weight = Number(item.weight) || 0;
+                                const correctSum = Math.floor(weight * priceWithCont);
+
+                                return {
+                                    ...item,
+                                    contaminationRate: rate,
+                                    priceWithContamination: priceWithCont,
+                                    sum: correctSum
+                                };
+                            });
+
+                            // Перераховуємо загальну суму
+                            const correctTotal = processedItems.reduce((acc, item) => acc + item.sum, 0);
+
+                            return {
+                                ...inv,
+                                items: processedItems,
+                                total: correctTotal
+                            };
+                        });
+
+                        setInvoices(processedInvoices);
+                    } else {
+                        setInvoices([]);
+                    }
                 }
 
                 setInvoicesLoaded(true);
@@ -185,25 +495,10 @@ export default function App() {
                 console.error("Помилка завантаження даних:", error);
 
                 // Завантажуємо тестові дані
-                const savedPrices = loadPricesFromLocalStorage();
-                let metalsWithDefaults;
-
-                if (savedPrices) {
-                    metalsWithDefaults = initialTestMetals.map(metal => {
-                        const savedPrice = savedPrices.find(p => p.id === metal.id);
-                        return {
-                            ...metal,
-                            price: savedPrice ? savedPrice.price : metal.price,
-                            initialPrice: savedPrice ? savedPrice.price : metal.price,
-                            defaultPrice: metal.price
-                        };
-                    });
-                } else {
-                    metalsWithDefaults = initialTestMetals.map(metal => ({
-                        ...metal,
-                        defaultPrice: metal.price
-                    }));
-                }
+                const metalsWithDefaults = initialTestMetals.map(metal => ({
+                    ...metal,
+                    defaultPrice: metal.price
+                }));
 
                 setItems(metalsWithDefaults);
                 initialItemsRef.current = metalsWithDefaults;
@@ -212,7 +507,42 @@ export default function App() {
                 // Накладні тільки з localStorage
                 const savedInvoices = loadInvoicesFromLocalStorage();
                 if (savedInvoices && savedInvoices.length > 0) {
-                    setInvoices(savedInvoices);
+                    // Перераховуємо всі накладні з правильним округленням
+                    const processedInvoices = savedInvoices.map(inv => {
+                        const processedItems = inv.items.map(item => {
+                            const rate = item.contaminationRate || contaminationRates[item.name] || 0;
+
+                            // Розраховуємо правильну ціну з засміченням
+                            let priceWithCont;
+                            if (item.name === "Чорний метал") {
+                                priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
+                            } else {
+                                priceWithCont = Math.floor(item.price * (1 - rate / 100));
+                            }
+
+                            // Розраховуємо правильну суму
+                            const weight = Number(item.weight) || 0;
+                            const correctSum = Math.floor(weight * priceWithCont);
+
+                            return {
+                                ...item,
+                                contaminationRate: rate,
+                                priceWithContamination: priceWithCont,
+                                sum: correctSum
+                            };
+                        });
+
+                        // Перераховуємо загальну суму
+                        const correctTotal = processedItems.reduce((acc, item) => acc + item.sum, 0);
+
+                        return {
+                            ...inv,
+                            items: processedItems,
+                            total: correctTotal
+                        };
+                    });
+
+                    setInvoices(processedInvoices);
                 } else {
                     setInvoices([]);
                 }
@@ -226,24 +556,66 @@ export default function App() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Оновлення загальної суми
     useEffect(() => {
-        setTotal(Math.floor(items.reduce((acc, i) => acc + (Number(i.weight) || 0) * i.price, 0)));
-    }, [items]);
+        const newTotal = items.reduce((acc, item) => {
+            const weight = Number(item.weight) || 0;
+            const rate = contaminationRates[item.name] || 0;
+            return acc + calculateSum(weight, item.price, item.name, rate);
+        }, 0);
+        setTotal(newTotal);
+    }, [items, contaminationRates]);
 
-    // Функція для синхронізації накладних з сервером (useCallback для стабільності)
+    // Функція для синхронізації накладних з сервером
     const syncInvoicesFromServer = useCallback(async () => {
         try {
             const res = await fetch(`${API_BASE_URL}/invoices`);
             if (res.ok) {
                 const serverInvoices = await res.json();
-                setInvoices(serverInvoices);
-                saveInvoicesToLocalStorage(serverInvoices);
-                console.log('Накладні синхронізовані з сервером:', serverInvoices.length);
+
+                // Перераховуємо всі накладні з правильним округленням
+                const processedInvoices = serverInvoices.map(inv => {
+                    const processedItems = inv.items.map(item => {
+                        const rate = item.contaminationRate || contaminationRates[item.name] || 0;
+
+                        // Розраховуємо правильну ціну з засміченням
+                        let priceWithCont;
+                        if (item.name === "Чорний метал") {
+                            priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
+                        } else {
+                            priceWithCont = Math.floor(item.price * (1 - rate / 100));
+                        }
+
+                        // Розраховуємо правильну суму
+                        const weight = Number(item.weight) || 0;
+                        const correctSum = Math.floor(weight * priceWithCont);
+
+                        return {
+                            ...item,
+                            contaminationRate: rate,
+                            priceWithContamination: priceWithCont,
+                            sum: correctSum
+                        };
+                    });
+
+                    // Перераховуємо загальну суму
+                    const correctTotal = processedItems.reduce((acc, item) => acc + item.sum, 0);
+
+                    return {
+                        ...inv,
+                        items: processedItems,
+                        total: correctTotal
+                    };
+                });
+
+                console.log('Накладні після перерахунку:', processedInvoices);
+                setInvoices(processedInvoices);
+                saveInvoicesToLocalStorage(processedInvoices);
             }
         } catch (error) {
             console.error("Помилка синхронізації накладних з сервером:", error);
         }
-    }, [saveInvoicesToLocalStorage, setInvoices]);
+    }, [saveInvoicesToLocalStorage, contaminationRates]);
 
     // Синхронізація при завантаженні
     useEffect(() => {
@@ -252,57 +624,49 @@ export default function App() {
         }
     }, [invoicesLoaded, syncInvoicesFromServer]);
 
-    // Функція для завантаження цін металів
-    const loadMetalPrices = async () => {
-        try {
-            const res = await fetch(`${API_BASE_URL}/metals`);
-            const data = await res.json();
-
-            // Перевіряємо збережені ціни в localStorage чи ні
-            const savedPrices = loadPricesFromLocalStorage();
-
-            let metalsWithDefaults;
-            if (savedPrices) {
-                metalsWithDefaults = data.map(metal => {
-                    const savedPrice = savedPrices.find(p => p.id === metal.id);
-                    return {
-                        ...metal,
-                        price: savedPrice ? savedPrice.price : metal.price,
-                        defaultPrice: metal.price
-                    };
-                });
-            } else {
-                metalsWithDefaults = data.map(metal => ({
-                    ...metal,
-                    defaultPrice: metal.price
-                }));
-            }
-
-            setMetalPrices(metalsWithDefaults);
-        } catch (error) {
-            console.error("Помилка завантаження цін:", error);
-
-            const savedPrices = loadPricesFromLocalStorage();
-            let metalsWithDefaults;
-
-            if (savedPrices) {
-                metalsWithDefaults = initialTestMetals.map(metal => {
-                    const savedPrice = savedPrices.find(p => p.id === metal.id);
-                    return {
-                        ...metal,
-                        price: savedPrice ? savedPrice.price : metal.price,
-                        defaultPrice: metal.price
-                    };
-                });
-            } else {
-                metalsWithDefaults = initialTestMetals.map(metal => ({
-                    ...metal,
-                    defaultPrice: metal.price
-                }));
-            }
-
-            setMetalPrices(metalsWithDefaults);
+    // Функція для оновлення відсотка засмічення
+    const updateContaminationRate = (metalName, newRate) => {
+        if (newRate < 0 || newRate > 100) {
+            alert("Відсоток засмічення має бути від 0 до 100");
+            return;
         }
+
+        setContaminationRates(prev => {
+            const updated = { ...prev, [metalName]: newRate };
+            saveContaminationRatesToLocalStorage(updated);
+            return updated;
+        });
+    };
+
+    // Функція для тимчасової зміни засмічення в адмін-панелі
+    const updateTempContamination = (metalName, newRate) => {
+        setTempContamination(prev => ({
+            ...prev,
+            [metalName]: newRate
+        }));
+    };
+
+    // Функція для збереження всіх змін засмічення
+    const saveAllContaminationChanges = () => {
+        if (Object.keys(tempContamination).length === 0) {
+            alert("Немає змін для збереження");
+            return;
+        }
+
+        setContaminationRates(prev => {
+            const updated = { ...prev, ...tempContamination };
+            saveContaminationRatesToLocalStorage(updated);
+            return updated;
+        });
+
+        setTempContamination({});
+        alert("✅ Всі зміни засмічення збережено!");
+    };
+
+    // Функція для скасування змін засмічення
+    const cancelContaminationChanges = () => {
+        setTempContamination({});
+        alert("❌ Зміни скасовано");
     };
 
     // Функція для оновлення ціни металу
@@ -518,9 +882,9 @@ export default function App() {
         }
     };
 
-    // Функція для скасування всіх тимчасових змін
-    const cancelAllChanges = () => {
-        if (!window.confirm("Скасувати всі незбережені зміни?")) {
+    // Функція для скасування всіх тимчасових змін цін
+    const cancelAllPriceChanges = () => {
+        if (!window.confirm("Скасувати всі незбережені зміни цін?")) {
             return;
         }
 
@@ -542,7 +906,7 @@ export default function App() {
         }
 
         setTempPrices({});
-        alert("✅ Всі зміни скасовано!");
+        alert("✅ Всі зміни цін скасовано!");
     };
 
     // Функція для видалення всіх накладних
@@ -646,16 +1010,41 @@ export default function App() {
         setIsSaving(true);
 
         try {
-            const newInvoice = {
-                items: itemsWithWeight.map(item => ({
+            // Створюємо об'єкт накладної з правильними даними (ті самі розрахунки що й у viewReceipt)
+            const invoiceItems = itemsWithWeight.map(item => {
+                const rate = contaminationRates[item.name] || 0;
+
+                // Розраховуємо ціну з засміченням з округленням вниз
+                const priceAfterCont = item.price * (1 - rate / 100);
+                let priceWithCont;
+                if (item.name === "Чорний метал") {
+                    priceWithCont = Math.floor(priceAfterCont * 10) / 10;
+                } else {
+                    priceWithCont = Math.floor(priceAfterCont);
+                }
+
+                const weight = Number(item.weight);
+                const sum = Math.floor(weight * priceWithCont);
+
+                return {
                     id: item.id,
                     name: item.name,
                     price: item.price,
-                    weight: item.weight,
-                    sum: Math.floor(Number(item.weight) * item.price)
-                })),
-                total: total
+                    priceWithContamination: priceWithCont,
+                    contaminationRate: rate,
+                    weight: weight,
+                    sum: sum
+                };
+            });
+
+            const invoiceTotal = invoiceItems.reduce((acc, item) => acc + item.sum, 0);
+
+            const newInvoice = {
+                items: invoiceItems,
+                total: invoiceTotal
             };
+
+            console.log("Збереження накладної:", newInvoice); // Для перевірки
 
             // Зберігаємо на сервері
             try {
@@ -674,14 +1063,14 @@ export default function App() {
                     await syncInvoicesFromServer();
 
                     viewReceipt({
-                        id: result.id,
+                        id: result.invoiceId,
                         created_at: result.createdAt,
-                        total: total,
-                        items: itemsWithWeight
+                        total: invoiceTotal,
+                        items: invoiceItems
                     });
 
                     resetForm();
-                    alert(`Накладна №${result.id} успішно збережена!`);
+                    alert(`Накладна №${result.invoiceId} успішно збережена!`);
                 } else {
                     throw new Error('Помилка збереження');
                 }
@@ -696,8 +1085,8 @@ export default function App() {
                 const localInvoice = {
                     id: newInvoiceId,
                     created_at: new Date().toISOString(),
-                    total: total,
-                    items: itemsWithWeight
+                    total: invoiceTotal,
+                    items: invoiceItems
                 };
 
                 const updatedInvoices = [localInvoice, ...invoices];
@@ -727,13 +1116,11 @@ export default function App() {
         const selectedDate = new Date(dailyReportDate);
         const startOfDay = new Date(selectedDate);
         startOfDay.setHours(0, 0, 0, 0);
-
         const endOfDay = new Date(selectedDate);
         endOfDay.setHours(23, 59, 59, 999);
 
         const dayInvoices = invoices.filter(inv => {
             if (!inv.created_at) return false;
-
             const invoiceDate = new Date(inv.created_at);
             return invoiceDate >= startOfDay && invoiceDate <= endOfDay;
         });
@@ -743,50 +1130,60 @@ export default function App() {
             return;
         }
 
-        const metalStats = {};
+        // Створюємо об'єкт з усіма металами
+        const allMetals = {};
+        initialItemsRef.current.forEach(metal => {
+            allMetals[metal.name] = {
+                name: metal.name,
+                totalWeight: 0,
+                totalAmount: 0,
+                averagePrice: 0,
+                transactions: [],
+                price: metal.price,
+                id: metal.id,
+                hasTransactions: false,
+                contaminationRate: contaminationRates[metal.name] || 0,
+                priceWithContamination: calculatePriceWithContamination(metal.name, metal.price)
+            };
+        });
+
+        // Збираємо статистику по накладних
         let totalDayAmount = 0;
 
         dayInvoices.forEach(invoice => {
             invoice.items.forEach(item => {
-                if (!metalStats[item.name]) {
-                    metalStats[item.name] = {
-                        totalWeight: 0,
-                        totalAmount: 0,
+                if (allMetals[item.name]) {
+                    const weight = Number(item.weight) || 0;
+                    const amount = item.sum || 0;
+
+                    allMetals[item.name].totalWeight += weight;
+                    allMetals[item.name].totalAmount += amount;
+                    allMetals[item.name].hasTransactions = true;
+                    allMetals[item.name].transactions.push({
+                        weight: weight,
                         price: item.price,
-                        transactions: []
-                    };
+                        priceWithContamination: item.priceWithContamination || calculatePriceWithContamination(item.name, item.price, item.contaminationRate),
+                        contaminationRate: item.contaminationRate || 0,
+                        amount: amount
+                    });
+
+                    totalDayAmount += amount;
                 }
-
-                const weight = Number(item.weight) || 0;
-                const amount = item.sum || Math.floor(weight * item.price);
-
-                metalStats[item.name].totalWeight += weight;
-                metalStats[item.name].totalAmount += amount;
-                metalStats[item.name].transactions.push({
-                    weight: weight,
-                    price: item.price,
-                    amount: amount
-                });
-
-                totalDayAmount += amount;
             });
         });
 
-        Object.keys(metalStats).forEach(metalName => {
-            const metal = metalStats[metalName];
+        // Розраховуємо середню ціну для металів з транзакціями
+        Object.keys(allMetals).forEach(metalName => {
+            const metal = allMetals[metalName];
             if (metal.totalWeight > 0) {
                 metal.averagePrice = Math.round((metal.totalAmount / metal.totalWeight) * 100) / 100;
-            } else {
-                metal.averagePrice = 0;
             }
         });
 
-        const sortedMetals = Object.entries(metalStats)
-            .sort(([, a], [, b]) => b.totalAmount - a.totalAmount)
-            .map(([name, stats]) => ({
-                name,
-                ...stats
-            }));
+        // Сортуємо метали за ID і фільтруємо тільки з транзакціями
+        const sortedMetals = Object.values(allMetals)
+            .filter(metal => metal.hasTransactions)
+            .sort((a, b) => a.id - b.id);
 
         generateReportPDF(selectedDate, sortedMetals, dayInvoices, totalDayAmount);
     };
@@ -806,175 +1203,285 @@ export default function App() {
             day: 'numeric'
         });
 
+        // Фільтруємо тільки метали з транзакціями
+        const metalsWithTransactions = metalStats.filter(m => m.hasTransactions);
+
         const htmlContent = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <title>Звіт за ${reportDateStr}</title>
-                <style>
-                    @page {
-                        size: A4;
-                        margin: 20mm;
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Звіт за ${reportDateStr}</title>
+            <style>
+                @page {
+                    size: A4;
+                    margin: 20mm;
+                }
+                
+                body {
+                    font-family: 'Times New Roman', Times, serif;
+                    font-size: 12pt;
+                    line-height: 1.4;
+                    color: #000;
+                    margin: 0;
+                    padding: 0;
+                }
+                
+                .header {
+                    text-align: center;
+                    margin-bottom: 30px;
+                    border-bottom: 2px solid #000;
+                    padding-bottom: 15px;
+                }
+                
+                .header h1 {
+                    font-size: 24pt;
+                    font-weight: bold;
+                    margin: 0 0 10px 0;
+                    text-transform: uppercase;
+                }
+                
+                .header h2 {
+                    font-size: 18pt;
+                    font-weight: normal;
+                    margin: 5px 0;
+                }
+                
+                .summary {
+                    margin-bottom: 30px;
+                    padding: 20px;
+                    background-color: #f5f5f5;
+                    border: 1px solid #000;
+                }
+                
+                .summary-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 15px;
+                }
+                
+                .summary-item {
+                    font-size: 12pt;
+                }
+                
+                .summary-item strong {
+                    font-size: 14pt;
+                    display: block;
+                    margin-bottom: 5px;
+                    color: #000;
+                }
+                
+                .summary-value {
+                    font-size: 18pt;
+                    font-weight: bold;
+                }
+                
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 20px 0;
+                    font-size: 11pt;
+                }
+                
+                th {
+                    background-color: #000;
+                    color: white;
+                    font-weight: bold;
+                    padding: 10px 5px;
+                    text-align: center;
+                    border: 1px solid #000;
+                    font-size: 11pt;
+                    text-transform: uppercase;
+                }
+                
+                td {
+                    border: 1px solid #000;
+                    padding: 8px 5px;
+                }
+                
+                tr.metal-row {
+                    background-color: #ffffff;
+                }
+                
+                tr.metal-row:nth-child(even) {
+                    background-color: #f5f5f5;
+                }
+                
+                tr.total-row {
+                    font-weight: bold;
+                    background-color: #e0e0e0;
+                }
+                
+                tr.total-row td {
+                    border-top: 2px solid #000;
+                    font-size: 12pt;
+                }
+                
+                .text-right {
+                    text-align: right;
+                }
+                
+                .text-center {
+                    text-align: center;
+                }
+                
+                .number-cell {
+                    text-align: right;
+                    font-family: 'Courier New', monospace;
+                }
+                
+                .signature {
+                    margin-top: 50px;
+                    padding-top: 20px;
+                    border-top: 1px solid #000;
+                    display: flex;
+                    justify-content: space-between;
+                }
+                
+                .signature-line {
+                    width: 200px;
+                    border-bottom: 1px solid #000;
+                    margin-top: 5px;
+                }
+                
+                .footer {
+                    margin-top: 30px;
+                    font-size: 10pt;
+                    color: #666;
+                    text-align: center;
+                    font-style: italic;
+                }
+                
+                @media print {
+                    .no-print {
+                        display: none;
                     }
                     
                     body {
-                        font-family: 'Times New Roman', Times, serif;
-                        font-size: 12pt;
-                        line-height: 1.4;
-                        color: #000;
-                        margin: 0;
-                        padding: 20px;
-                    }
-                    
-                    .header {
-                        text-align: center;
-                        margin-bottom: 30px;
-                        border-bottom: 2px solid #000;
-                        padding-bottom: 15px;
-                    }
-                    
-                    .header h1 {
-                        font-size: 24pt;
-                        font-weight: bold;
-                        margin: 0 0 10px 0;
+                        padding: 0;
                     }
                     
                     .summary {
-                        margin-bottom: 30px;
-                        padding: 20px;
                         background-color: #f5f5f5;
-                        border-radius: 5px;
-                        border: 1px solid #ddd;
-                    }
-                    
-                    .summary-item {
-                        margin: 10px 0;
-                        font-size: 14pt;
-                    }
-                    
-                    table {
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin: 20px 0;
-                        font-size: 11pt;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
                     }
                     
                     th {
-                        background-color: #2c3e50;
-                        color: white;
-                        font-weight: bold;
-                        padding: 12px 8px;
-                        text-align: left;
-                        border: 1px solid #ddd;
+                        background-color: #000 !important;
+                        color: white !important;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
                     }
-                    
-                    td {
-                        border: 1px solid #ddd;
-                        padding: 10px 8px;
-                    }
-                    
-                    tr:nth-child(even) {
-                        background-color: #f9f9f9;
-                    }
-                    
-                    .total-row {
-                        font-weight: bold;
-                        background-color: #e8e8e8;
-                    }
-                    
-                    .signature {
-                        margin-top: 50px;
-                        padding-top: 20px;
-                        border-top: 1px solid #000;
-                    }
-                    
-                    @media print {
-                        body {
-                            padding: 0;
-                        }
-                        
-                        .no-print {
-                            display: none;
-                        }
-                        
-                        .page-break {
-                            page-break-after: always;
-                        }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="no-print" style="text-align: center; margin-bottom: 20px; padding: 20px; background: #f5f5f5;">
-                    <button onclick="window.print()" style="padding: 12px 24px; font-size: 16px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 4px; margin-right: 10px;">
-                        🖨️ Друкувати звіт
-                    </button>
-                    <button onclick="window.close()" style="padding: 12px 24px; font-size: 16px; cursor: pointer; background: #dc3545; color: white; border: none; border-radius: 4px;">
-                        Закрити
-                    </button>
+                }
+            </style>
+        </head>
+        <body>
+            <div class="no-print" style="text-align: center; margin-bottom: 20px; padding: 15px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 5px;">
+                <button onclick="window.print()" style="padding: 10px 25px; font-size: 14px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 4px; margin-right: 10px;">
+                    🖨️ Друкувати звіт
+                </button>
+                <button onclick="window.close()" style="padding: 10px 25px; font-size: 14px; cursor: pointer; background: #dc3545; color: white; border: none; border-radius: 4px;">
+                    ✕ Закрити
+                </button>
+            </div>
+            
+            <div class="header">
+                <h1>ЗВІТ ЗА ДЕНЬ</h1>
+                <h2>${reportDateStr}</h2>
+            </div>
+            
+            <div class="summary">
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <strong>Дата звіту:</strong>
+                        <div>${new Date().toLocaleDateString('uk-UA')}</div>
+                        <div>${new Date().toLocaleTimeString('uk-UA')}</div>
+                    </div>
+                    <div class="summary-item">
+                        <strong>Кількість накладних:</strong>
+                        <div class="summary-value">${dayInvoices.length}</div>
+                    </div>
+                    <div class="summary-item">
+                        <strong>Загальна сума:</strong>
+                        <div class="summary-value">${totalDayAmount.toLocaleString('uk-UA')} грн</div>
+                    </div>
                 </div>
-                
-                <div class="header">
-                    <h1>ЗВІТ ЗА ДЕНЬ</h1>
-                    <div style="font-size: 16pt;">${reportDateStr}</div>
-                </div>
-                
-                <div class="summary">
-                    <div class="summary-item"><strong>Дата звіту:</strong> ${new Date().toLocaleString('uk-UA')}</div>
-                    <div class="summary-item"><strong>Кількість накладних:</strong> ${dayInvoices.length}</div>
-                    <div class="summary-item"><strong>Загальна сума витрат:</strong> ${totalDayAmount.toLocaleString('uk-UA')} грн</div>
-                </div>
-                
-                <h2>Статистика по металах</h2>
+            </div>
+
+            ${metalsWithTransactions.length > 0 ? `
                 <table>
                     <thead>
                         <tr>
-                            <th>Метал</th>
-                            <th>Вага (кг)</th>
-                            <th>Середня ціна (грн/кг)</th>
-                            <th>Сума (грн)</th>
-                            <th>Кількість транзакцій</th>
+                            <th width="4%">№</th>
+                            <th width="25%">Найменування металу</th>
+                            <th width="6%">Засм.%</th>
+                            <th width="8%">Ціна (грн)</th>
+                            <th width="8%">Ціна з засм.</th>
+                            <th width="8%">Вага (кг)</th>
+                            <th width="8%">Сума (грн)</th>
+                            <th width="8%">К-сть</th>
+                            <th width="10%">Середня ціна</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${metalStats.map(metal => `
-                            <tr>
-                                <td>${metal.name}</td>
-                                <td>${metal.totalWeight.toFixed(2)}</td>
-                                <td>${metal.averagePrice ? metal.averagePrice.toFixed(2) : '0.00'}</td>
-                                <td>${metal.totalAmount.toLocaleString('uk-UA')}</td>
-                                <td>${metal.transactions ? metal.transactions.length : 0}</td>
+                        ${metalsWithTransactions.map((metal, index) => `
+                            <tr class="metal-row">
+                                <td class="text-center">${index + 1}</td>
+                                <td><strong>${metal.name}</strong></td>
+                                <td class="text-center">${metal.contaminationRate}%</td>
+                                <td class="number-cell">${metal.price}</td>
+                                <td class="number-cell">${metal.priceWithContamination}</td>
+                                <td class="number-cell">${metal.totalWeight.toFixed(2)}</td>
+                                <td class="number-cell"><strong>${metal.totalAmount.toLocaleString('uk-UA')}</strong></td>
+                                <td class="text-center">${metal.transactions.length}</td>
+                                <td class="number-cell"><strong>${metal.averagePrice.toFixed(2)}</strong></td>
                             </tr>
                         `).join('')}
+                        
                         <tr class="total-row">
-                            <td><strong>РАЗОМ:</strong></td>
-                            <td><strong>${metalStats.reduce((sum, metal) => sum + metal.totalWeight, 0).toFixed(2)}</strong></td>
-                            <td></td>
-                            <td><strong>${totalDayAmount.toLocaleString('uk-UA')}</strong></td>
-                            <td><strong>${metalStats.reduce((sum, metal) => sum + (metal.transactions ? metal.transactions.length : 0), 0)}</strong></td>
+                            <td colspan="5" class="text-right"><strong>РАЗОМ:</strong></td>
+                            <td class="number-cell"><strong>${metalsWithTransactions.reduce((sum, m) => sum + m.totalWeight, 0).toFixed(2)}</strong></td>
+                            <td class="number-cell"><strong>${totalDayAmount.toLocaleString('uk-UA')}</strong></td>
+                            <td class="text-center"><strong>${metalsWithTransactions.reduce((sum, m) => sum + m.transactions.length, 0)}</strong></td>
+                            <td class="number-cell"><strong>-</strong></td>
                         </tr>
                     </tbody>
                 </table>
-                
-                <div class="signature">
-                    <div style="margin-bottom: 10px; font-size: 13pt;">
-                        Підпис відповідальної особи: _________________________
-                    </div>
-                    <div style="font-size: 11pt; color: #666;">
-                        Звіт згенеровано автоматично системою обліку металів
-                    </div>
+            ` : `
+                <div style="text-align: center; padding: 50px; border: 1px solid #000; margin: 20px 0;">
+                    <p style="font-size: 16pt;">За обраний період немає транзакцій</p>
                 </div>
-                
-                <script>
-                    window.onload = function() {
-                        setTimeout(() => {
-                            window.print();
-                        }, 500);
-                    };
-                </script>
-            </body>
-            </html>
-        `;
+            `}
+
+            <div class="signature">
+                <div>
+                    <div>Підпис відповідальної особи:</div>
+                    <div class="signature-line"></div>
+                </div>
+                <div>
+                    <div>М.П.</div>
+                </div>
+                <div>
+                    <div>Дата:</div>
+                    <div class="signature-line"></div>
+                </div>
+            </div>
+            
+            <div class="footer">
+                Звіт згенеровано автоматично системою обліку металів
+            </div>
+            
+            <script>
+                window.onload = function() {
+                    setTimeout(() => {
+                        window.print();
+                    }, 500);
+                };
+            </script>
+        </body>
+        </html>
+    `;
 
         printWindow.document.write(htmlContent);
         printWindow.document.close();
@@ -1002,28 +1509,36 @@ export default function App() {
 
         receipt += "-".repeat(maxWidth) + "\n";
 
-        receipt += "МЕТАЛ           ЦІНА ВАГА СУМА\n";
+        receipt += "МЕТАЛ   ЗАСМ  ЦІНА ЦЗ  ВАГА     СУМА\n";
         receipt += "-".repeat(maxWidth) + "\n";
 
         invoice.items.forEach(item => {
             let name = item.name || "Метал";
-            if (name.length > 12) {
-                name = name.substring(0, 12);
+            if (name.length > 8) {
+                name = name.substring(0, 8);
             }
-            name = name.padEnd(12, ' ');
+            name = name.padEnd(8, ' ');
 
-            const price = (item.price || 0).toString().padStart(4, ' ');
-            const weight = (Number(item.weight) || 0).toFixed(2).padStart(4, ' ');
-            const sum = (item.sum || Math.floor(Number(item.weight) * item.price) || 0).toString().padStart(6, ' ');
+            // Отримуємо відсоток засмічення
+            const rate = item.contaminationRate || 0;
 
-            receipt += `${name} ${price} ${weight} ${sum}\n`;
+            // Отримуємо ціну з засміченням
+            const priceWithCont = item.priceWithContamination || item.price;
+
+            const rateStr = rate.toString().padStart(2, ' ');
+            const priceStr = (item.price || 0).toString().padStart(4, ' ');
+            const priceWithContStr = priceWithCont.toString().padStart(4, ' ');
+            const weightStr = (Number(item.weight) || 0).toFixed(2).padStart(4, ' ');
+            const sumStr = (item.sum || 0).toString().padStart(6, ' ');
+
+            receipt += `${name} ${rateStr}% ${priceStr} ${priceWithContStr} ${weightStr} ${sumStr}\n`;
         });
 
         receipt += "=".repeat(maxWidth) + "\n";
 
         const totalText = "РАЗОМ:";
         const totalAmount = `${invoice.total || 0} грн`;
-        const totalLine = totalText.padEnd(maxWidth - totalAmount.length, ' ') + totalAmount;
+        const totalLine = totalText.padEnd(10) + totalAmount.padStart(27);
         receipt += totalLine + "\n";
 
         receipt += "=".repeat(maxWidth) + "\n";
@@ -1038,13 +1553,93 @@ export default function App() {
         return receipt;
     };
 
+    // Функція для перегляду чеку
+    const viewReceipt = (invoice) => {
+        if (!invoice) {
+            alert("Немає даних для перегляду");
+            return;
+        }
+
+        // Перераховуємо всі елементи накладної з правильним округленням
+        const itemsWithCorrectData = invoice.items.map(item => {
+            const rate = item.contaminationRate || contaminationRates[item.name] || 0;
+
+            // Розраховуємо правильну ціну з засміченням
+            let priceWithCont;
+            if (item.name === "Чорний метал") {
+                priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
+            } else {
+                priceWithCont = Math.floor(item.price * (1 - rate / 100));
+            }
+
+            // Розраховуємо правильну суму
+            const weight = Number(item.weight) || 0;
+            const correctSum = Math.floor(weight * priceWithCont);
+
+            return {
+                ...item,
+                contaminationRate: rate,
+                priceWithContamination: priceWithCont,
+                sum: correctSum
+            };
+        });
+
+        // Перераховуємо загальну суму
+        const correctTotal = itemsWithCorrectData.reduce((acc, item) => acc + item.sum, 0);
+
+        const receiptText = formatReceiptForPrinter({
+            ...invoice,
+            items: itemsWithCorrectData,
+            total: correctTotal
+        });
+
+        setPrintInvoice({
+            ...invoice,
+            items: itemsWithCorrectData,
+            total: correctTotal,
+            receiptText: receiptText
+        });
+    };
+
+    // Функція для друку чеку
     const printToReceiptPrinter = (invoice) => {
         if (!invoice) {
             alert("Немає даних для друку");
             return;
         }
 
-        const receiptText = formatReceiptForPrinter(invoice);
+        // Перераховуємо всі елементи накладної з правильним округленням
+        const itemsWithCorrectData = invoice.items.map(item => {
+            const rate = item.contaminationRate || contaminationRates[item.name] || 0;
+
+            // Розраховуємо правильну ціну з засміченням
+            let priceWithCont;
+            if (item.name === "Чорний метал") {
+                priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
+            } else {
+                priceWithCont = Math.floor(item.price * (1 - rate / 100));
+            }
+
+            // Розраховуємо правильну суму
+            const weight = Number(item.weight) || 0;
+            const correctSum = Math.floor(weight * priceWithCont);
+
+            return {
+                ...item,
+                contaminationRate: rate,
+                priceWithContamination: priceWithCont,
+                sum: correctSum
+            };
+        });
+
+        // Перераховуємо загальну суму
+        const correctTotal = itemsWithCorrectData.reduce((acc, item) => acc + item.sum, 0);
+
+        const receiptText = formatReceiptForPrinter({
+            ...invoice,
+            items: itemsWithCorrectData,
+            total: correctTotal
+        });
 
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
@@ -1053,150 +1648,182 @@ export default function App() {
         }
 
         printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <title>Чек №${invoice.id}</title>
-                <style>
-                    @media print {
-                        @page {
-                            size: 80mm auto;
-                            margin: 2mm !important;
-                        }
-                        
-                        body {
-                            margin: 0 !important;
-                            padding: 2mm !important;
-                            width: 76mm !important;
-                            max-width: 76mm !important;
-                            font-family: 'Courier New', Courier, monospace !important;
-                            font-size: 10pt !important;
-                            line-height: 1.2 !important;
-                            color: black !important;
-                            background: white !important;
-                            -webkit-print-color-adjust: exact !important;
-                        }
-                        
-                        .receipt-content {
-                            white-space: pre !important;
-                            word-wrap: break-word !important;
-                            overflow-wrap: break-word !important;
-                            width: 100% !important;
-                            max-width: 76mm !important;
-                            font-size: 10pt !important;
-                            line-height: 1.2 !important;
-                        }
-                        
-                        .no-print {
-                            display: none !important;
-                        }
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Чек №${invoice.id}</title>
+            <style>
+                @media print {
+                    @page {
+                        size: 80mm auto;
+                        margin: 2mm !important;
                     }
                     
                     body {
-                        font-family: 'Courier New', Courier, monospace;
-                        font-size: 14px;
-                        line-height: 1.4;
-                        padding: 20px;
-                        background: #f5f5f5;
-                        margin: 0;
+                        margin: 0 !important;
+                        padding: 2mm !important;
+                        width: 76mm !important;
+                        max-width: 76mm !important;
+                        font-family: 'Courier New', Courier, monospace !important;
+                        font-size: 10pt !important;
+                        line-height: 1.2 !important;
+                        color: black !important;
+                        background: white !important;
+                        -webkit-print-color-adjust: exact !important;
                     }
                     
                     .receipt-content {
-                        white-space: pre;
-                        font-family: 'Courier New', Courier, monospace;
-                        font-size: 14px;
-                        line-height: 1.4;
-                        background: white;
-                        padding: 20px;
-                        border: 1px solid #ccc;
-                        border-radius: 4px;
-                        margin: 0 auto;
-                        max-width: 400px;
-                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                        overflow-x: auto;
+                        white-space: pre !important;
+                        word-wrap: break-word !important;
+                        overflow-wrap: break-word !important;
+                        width: 100% !important;
+                        max-width: 76mm !important;
+                        font-size: 10pt !important;
+                        line-height: 1.2 !important;
                     }
                     
-                    .controls {
-                        text-align: center;
-                        margin: 20px 0;
-                        padding: 15px;
-                        background: white;
-                        border-radius: 8px;
-                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    .no-print {
+                        display: none !important;
                     }
-                    
-                    button {
-                        padding: 10px 20px;
-                        margin: 5px;
-                        font-size: 16px;
-                        cursor: pointer;
-                        background: #007bff;
-                        color: white;
-                        border: none;
-                        border-radius: 4px;
-                        transition: background 0.3s;
-                    }
-                    
-                    button:hover {
-                        background: #0056b3;
-                    }
-                    
-                    .print-btn {
-                        background: #28a745;
-                    }
-                    
-                    .print-btn:hover {
-                        background: #218838;
-                    }
-                    
-                    .close-btn {
-                        background: #dc3545;
-                    }
-                    
-                    .close-btn:hover {
-                        background: #c82333;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="controls no-print">
-                    <h3 style="margin: 0 0 15px 0;">Чек №${invoice.id}</h3>
-                    <p style="margin: 0 0 15px 0; color: #666;">Ширина: 80 мм (40 символів)</p>
-                    <button class="print-btn" onclick="window.print()">🖨️ Друкувати чек</button>
-                    <button class="close-btn" onclick="window.close()">✕ Закрити</button>
-                </div>
+                }
                 
-                <div class="receipt-content">
+                body {
+                    font-family: 'Courier New', Courier, monospace;
+                    font-size: 14px;
+                    line-height: 1.4;
+                    padding: 20px;
+                    background: #f5f5f5;
+                    margin: 0;
+                }
+                
+                .receipt-content {
+                    white-space: pre;
+                    font-family: 'Courier New', Courier, monospace;
+                    font-size: 14px;
+                    line-height: 1.4;
+                    background: white;
+                    padding: 20px;
+                    border: 1px solid #ccc;
+                    border-radius: 4px;
+                    margin: 0 auto;
+                    max-width: 400px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    overflow-x: auto;
+                }
+                
+                .controls {
+                    text-align: center;
+                    margin: 20px 0;
+                    padding: 15px;
+                    background: white;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }
+                
+                button {
+                    padding: 10px 20px;
+                    margin: 5px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    background: #007bff;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    transition: background 0.3s;
+                }
+                
+                button:hover {
+                    background: #0056b3;
+                }
+                
+                .print-btn {
+                    background: #28a745;
+                }
+                
+                .print-btn:hover {
+                    background: #218838;
+                }
+                
+                .close-btn {
+                    background: #dc3545;
+                }
+                
+                .close-btn:hover {
+                    background: #c82333;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="controls no-print">
+                <h3 style="margin: 0 0 15px 0;">Чек №${invoice.id}</h3>
+                <p style="margin: 0 0 15px 0; color: #666;">Ширина: 80 мм (40 символів)</p>
+                <button class="print-btn" onclick="window.print()">🖨️ Друкувати чек</button>
+                <button class="close-btn" onclick="window.close()">✕ Закрити</button>
+            </div>
+            
+            <div class="receipt-content">
 ${receiptText}
-                </div>
-                
-                <div class="controls no-print">
-                    <button class="print-btn" onclick="window.print()">🖨️ Друкувати чек</button>
-                    <button class="close-btn" onclick="window.close()">✕ Закрити</button>
-                </div>
-                
-                <script>
-                    window.addEventListener('load', function() {
-                        setTimeout(function() {
-                            window.print();
-                        }, 500);
-                    });
-                </script>
-            </body>
-            </html>
-        `);
+            </div>
+            
+            <div class="controls no-print">
+                <button class="print-btn" onclick="window.print()">🖨️ Друкувати чек</button>
+                <button class="close-btn" onclick="window.close()">✕ Закрити</button>
+            </div>
+            
+            <script>
+                window.addEventListener('load', function() {
+                    setTimeout(function() {
+                        window.print();
+                    }, 500);
+                });
+            </script>
+        </body>
+        </html>
+    `);
 
         printWindow.document.close();
     };
 
+    // Функція для копіювання чеку в буфер
     const copyReceiptToClipboard = (invoice) => {
         if (!invoice) {
             alert("Немає даних для копіювання");
             return;
         }
 
-        const receiptText = formatReceiptForPrinter(invoice);
+        // Перераховуємо всі елементи накладної з правильним округленням
+        const itemsWithCorrectData = invoice.items.map(item => {
+            const rate = item.contaminationRate || contaminationRates[item.name] || 0;
+
+            // Розраховуємо правильну ціну з засміченням
+            let priceWithCont;
+            if (item.name === "Чорний метал") {
+                priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
+            } else {
+                priceWithCont = Math.floor(item.price * (1 - rate / 100));
+            }
+
+            // Розраховуємо правильну суму
+            const weight = Number(item.weight) || 0;
+            const correctSum = Math.floor(weight * priceWithCont);
+
+            return {
+                ...item,
+                contaminationRate: rate,
+                priceWithContamination: priceWithCont,
+                sum: correctSum
+            };
+        });
+
+        // Перераховуємо загальну суму
+        const correctTotal = itemsWithCorrectData.reduce((acc, item) => acc + item.sum, 0);
+
+        const receiptText = formatReceiptForPrinter({
+            ...invoice,
+            items: itemsWithCorrectData,
+            total: correctTotal
+        });
 
         navigator.clipboard.writeText(receiptText)
             .then(() => {
@@ -1223,19 +1850,6 @@ ${receiptText}
 
                 document.body.removeChild(textArea);
             });
-    };
-
-    const viewReceipt = (invoice) => {
-        if (!invoice) {
-            alert("Немає даних для перегляду");
-            return;
-        }
-
-        const receiptText = formatReceiptForPrinter(invoice);
-        setPrintInvoice({
-            ...invoice,
-            receiptText: receiptText
-        });
     };
 
     const closePrint = () => {
@@ -1290,7 +1904,7 @@ ${receiptText}
         <>
             <div style={{
                 padding: '20px',
-                maxWidth: '1000px',
+                maxWidth: '1400px',
                 margin: '0 auto',
                 backgroundColor: '#1a1a1a',
                 minHeight: '100vh',
@@ -1485,6 +2099,7 @@ ${receiptText}
                             <li>Детальну статистику по кожному металу (вага, середня ціна, сума)</li>
                             <li>Загальну суму витрат за день</li>
                             <li>Кількість транзакцій по кожному металу</li>
+                            <li>Відсотки засмічення та ціни з урахуванням засмічення</li>
                         </ul>
                     </div>
                 </div>
@@ -1515,9 +2130,14 @@ ${receiptText}
                         <table width="100%" cellPadding="12" style={{
                             borderCollapse: 'collapse',
                             backgroundColor: '#242424',
-                            minWidth: '600px'
+                            minWidth: '1200px'
                         }}>
-                            <thead>
+                            <thead style={{
+                                position: 'sticky',
+                                top: 0,
+                                backgroundColor: '#333333',
+                                zIndex: 10
+                            }}>
                                 <tr style={{ backgroundColor: '#333333' }}>
                                     <th style={{
                                         padding: '15px',
@@ -1532,7 +2152,21 @@ ${receiptText}
                                         borderBottom: '2px solid #404040',
                                         color: '#ffffff',
                                         fontWeight: '600'
+                                    }}>Засмічення (%)</th>
+                                    <th style={{
+                                        padding: '15px',
+                                        textAlign: 'left',
+                                        borderBottom: '2px solid #404040',
+                                        color: '#ffffff',
+                                        fontWeight: '600'
                                     }}>Ціна / кг</th>
+                                    <th style={{
+                                        padding: '15px',
+                                        textAlign: 'left',
+                                        borderBottom: '2px solid #404040',
+                                        color: '#ffffff',
+                                        fontWeight: '600'
+                                    }}>Ціна з засміченням</th>
                                     <th style={{
                                         padding: '15px',
                                         textAlign: 'left',
@@ -1550,66 +2184,105 @@ ${receiptText}
                                 </tr>
                             </thead>
                             <tbody>
-                                {items.map(i => (
-                                    <tr key={i.id} style={{
-                                        borderBottom: '1px solid #404040',
-                                        transition: 'background-color 0.2s'
-                                    }}
-                                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2d2d2d'}
-                                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#242424'}
-                                    >
-                                        <td style={{
-                                            padding: '15px',
-                                            color: '#e0e0e0'
-                                        }}>{i.name}</td>
-                                        <td style={{ padding: '15px' }}>
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                min="0"
-                                                value={i.price}
-                                                onChange={e => updatePrice(i.id, e.target.value)}
-                                                style={{
-                                                    width: '120px',
-                                                    padding: '10px',
-                                                    border: '1px solid #555',
-                                                    borderRadius: '6px',
-                                                    fontSize: '14px',
-                                                    backgroundColor: '#333',
-                                                    color: '#fff',
-                                                    outline: 'none'
-                                                }}
-                                            />
-                                        </td>
-                                        <td style={{ padding: '15px' }}>
-                                            <input
-                                                type="text"
-                                                inputMode="decimal"
-                                                placeholder="0.0"
-                                                value={i.weight}
-                                                onChange={e => updateWeight(i.id, e.target.value)}
-                                                style={{
-                                                    width: '120px',
-                                                    padding: '10px',
-                                                    border: '1px solid #555',
-                                                    borderRadius: '6px',
-                                                    fontSize: '14px',
-                                                    backgroundColor: '#333',
-                                                    color: '#fff',
-                                                    outline: 'none'
-                                                }}
-                                            />
-                                        </td>
-                                        <td style={{
-                                            padding: '15px',
-                                            fontWeight: 'bold',
-                                            color: '#28a745',
-                                            fontSize: '16px'
-                                        }}>
-                                            {Math.floor((Number(i.weight) || 0) * i.price)} грн
-                                        </td>
-                                    </tr>
-                                ))}
+                                {items.map(i => {
+                                    const currentRate = contaminationRates[i.name] || 0;
+                                    const priceWithCont = calculatePriceWithContamination(i.name, i.price, currentRate);
+                                    const weight = Number(i.weight) || 0;
+                                    const sum = calculateSum(weight, i.price, i.name, currentRate);
+
+                                    return (
+                                        <tr key={i.id} style={{
+                                            borderBottom: '1px solid #404040',
+                                            transition: 'background-color 0.2s'
+                                        }}
+                                            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2d2d2d'}
+                                            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#242424'}
+                                        >
+                                            <td style={{
+                                                padding: '15px',
+                                                color: '#e0e0e0'
+                                            }}>{i.name}</td>
+                                            <td style={{ padding: '15px' }}>
+                                                <input
+                                                    type="number"
+                                                    step="0.1"
+                                                    min="0"
+                                                    max="100"
+                                                    value={currentRate}
+                                                    onChange={(e) => {
+                                                        const newRate = parseFloat(e.target.value) || 0;
+                                                        updateContaminationRate(i.name, newRate);
+                                                    }}
+                                                    style={{
+                                                        width: '80px',
+                                                        padding: '10px',
+                                                        border: '1px solid #ffc107',
+                                                        borderRadius: '6px',
+                                                        fontSize: '14px',
+                                                        backgroundColor: '#333',
+                                                        color: '#fff',
+                                                        outline: 'none',
+                                                        fontWeight: 'bold'
+                                                    }}
+                                                />
+                                            </td>
+                                            <td style={{ padding: '15px' }}>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={i.price}
+                                                    onChange={e => updatePrice(i.id, e.target.value)}
+                                                    style={{
+                                                        width: '100px',
+                                                        padding: '10px',
+                                                        border: '1px solid #555',
+                                                        borderRadius: '6px',
+                                                        fontSize: '14px',
+                                                        backgroundColor: '#333',
+                                                        color: '#fff',
+                                                        outline: 'none'
+                                                    }}
+                                                />
+                                            </td>
+                                            <td style={{
+                                                padding: '15px',
+                                                color: '#28a745',
+                                                fontWeight: 'bold',
+                                                fontSize: '16px'
+                                            }}>
+                                                {priceWithCont} грн
+                                            </td>
+                                            <td style={{ padding: '15px' }}>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    placeholder="0.0"
+                                                    value={i.weight}
+                                                    onChange={e => updateWeight(i.id, e.target.value)}
+                                                    style={{
+                                                        width: '100px',
+                                                        padding: '10px',
+                                                        border: '1px solid #555',
+                                                        borderRadius: '6px',
+                                                        fontSize: '14px',
+                                                        backgroundColor: '#333',
+                                                        color: '#fff',
+                                                        outline: 'none'
+                                                    }}
+                                                />
+                                            </td>
+                                            <td style={{
+                                                padding: '15px',
+                                                fontWeight: 'bold',
+                                                color: '#28a745',
+                                                fontSize: '16px'
+                                            }}>
+                                                {sum} грн
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -1787,7 +2460,7 @@ ${receiptText}
                                 <table width="100%" cellPadding="12" style={{
                                     borderCollapse: 'collapse',
                                     backgroundColor: '#242424',
-                                    minWidth: '700px'
+                                    minWidth: '800px'
                                 }}>
                                     <thead>
                                         <tr style={{ backgroundColor: '#333333' }}>
@@ -2037,7 +2710,7 @@ ${receiptText}
                                 margin: '0',
                                 fontSize: '1rem',
                                 maxWidth: '400px',
-
+                                marginInline: 'auto'
                             }}>
                                 {fromDate || toDate
                                     ? 'За обраний період накладні не знайдено. Спробуйте змінити дати.'
@@ -2048,7 +2721,7 @@ ${receiptText}
                 </div>
             </div>
 
-            {/* Адмін панель для зміни цін */}
+            {/* Адмін панель для зміни цін та засмічення */}
             {showAdminPanel && (
                 <div style={{
                     position: 'fixed',
@@ -2068,7 +2741,7 @@ ${receiptText}
                         backgroundColor: '#2d2d2d',
                         borderRadius: '12px',
                         width: '100%',
-                        maxWidth: '900px',
+                        maxWidth: '1400px',
                         maxHeight: '90vh',
                         overflow: 'hidden',
                         position: 'relative',
@@ -2094,7 +2767,7 @@ ${receiptText}
                                 alignItems: 'center',
                                 gap: '10px'
                             }}>
-                                ⚙️ Адмін-панель - Зміна цін металів
+                                ⚙️ Адмін-панель - Зміна цін та засмічення
                             </h3>
                             <button
                                 onClick={() => setShowAdminPanel(false)}
@@ -2141,11 +2814,10 @@ ${receiptText}
                                     paddingLeft: '20px',
                                     lineHeight: '1.6'
                                 }}>
-                                    <li>Змініть ціну для кожного металу у відповідному полі</li>
+                                    <li>Змініть ціну або відсоток засмічення для кожного металу у відповідних полях</li>
                                     <li>Натисніть "💾 Зберегти" для кожного металу окремо для постійного збереження</li>
-                                    <li>💡 <strong>Ціни зберігаються в браузері та на сервері</strong></li>
-                                    <li>Ціни можна скинути до значень за замовчуванням кнопкою "🔄 Скинути до стандартних"</li>
-                                    <li>Незбережені зміни можна скасувати кнопкою "❌ Скасувати зміни"</li>
+                                    <li>Для масового збереження змін засмічення використовуйте кнопки внизу</li>
+                                    <li>💡 <strong>Всі дані зберігаються в браузері та на сервері</strong></li>
                                 </ul>
                             </div>
 
@@ -2158,9 +2830,14 @@ ${receiptText}
                                 <table width="100%" cellPadding="15" style={{
                                     borderCollapse: 'collapse',
                                     backgroundColor: '#242424',
-                                    minWidth: '700px'
+                                    minWidth: '1400px'
                                 }}>
-                                    <thead>
+                                    <thead style={{
+                                        position: 'sticky',
+                                        top: 0,
+                                        backgroundColor: '#333333',
+                                        zIndex: 10
+                                    }}>
                                         <tr style={{ backgroundColor: '#333333' }}>
                                             <th style={{
                                                 padding: '15px',
@@ -2169,6 +2846,13 @@ ${receiptText}
                                                 color: '#ffffff',
                                                 fontWeight: '600'
                                             }}>Метал</th>
+                                            <th style={{
+                                                padding: '15px',
+                                                textAlign: 'left',
+                                                borderBottom: '2px solid #404040',
+                                                color: '#ffffff',
+                                                fontWeight: '600'
+                                            }}>Засмічення (%)</th>
                                             <th style={{
                                                 padding: '15px',
                                                 textAlign: 'left',
@@ -2189,6 +2873,13 @@ ${receiptText}
                                                 borderBottom: '2px solid #404040',
                                                 color: '#ffffff',
                                                 fontWeight: '600'
+                                            }}>Ціна з засміченням</th>
+                                            <th style={{
+                                                padding: '15px',
+                                                textAlign: 'left',
+                                                borderBottom: '2px solid #404040',
+                                                color: '#ffffff',
+                                                fontWeight: '600'
                                             }}>Нова ціна</th>
                                             <th style={{
                                                 padding: '15px',
@@ -2201,16 +2892,25 @@ ${receiptText}
                                     </thead>
                                     <tbody>
                                         {metalPrices.map(metal => {
-                                            const hasChanged = tempPrices[metal.id] !== undefined;
-                                            const isSaved = metal.price === (metal.defaultPrice || initialTestMetals.find(m => m.id === metal.id)?.price);
+                                            const hasPriceChanged = tempPrices[metal.id] !== undefined;
+                                            const isPriceSaved = metal.price === (metal.defaultPrice || initialTestMetals.find(m => m.id === metal.id)?.price);
+                                            const currentRate = contaminationRates[metal.name] || 0;
+                                            const tempRate = tempContamination[metal.name];
+                                            const hasContaminationChanged = tempRate !== undefined && tempRate !== currentRate;
+                                            const priceWithCont = calculatePriceWithContamination(
+                                                metal.name,
+                                                metal.price,
+                                                tempRate !== undefined ? tempRate : currentRate
+                                            );
+
                                             return (
                                                 <tr key={metal.id} style={{
                                                     borderBottom: '1px solid #404040',
-                                                    backgroundColor: hasChanged ? '#2a2a2a' : '#242424',
+                                                    backgroundColor: (hasPriceChanged || hasContaminationChanged) ? '#2a2a2a' : '#242424',
                                                     transition: 'background-color 0.2s'
                                                 }}
                                                     onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2d2d2d'}
-                                                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = hasChanged ? '#2a2a2a' : '#242424'}
+                                                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = (hasPriceChanged || hasContaminationChanged) ? '#2a2a2a' : '#242424'}
                                                 >
                                                     <td style={{
                                                         padding: '15px',
@@ -2219,6 +2919,30 @@ ${receiptText}
                                                         fontSize: '15px'
                                                     }}>
                                                         {metal.name}
+                                                    </td>
+                                                    <td style={{ padding: '15px' }}>
+                                                        <input
+                                                            type="number"
+                                                            step="0.1"
+                                                            min="0"
+                                                            max="100"
+                                                            value={tempRate !== undefined ? tempRate : currentRate}
+                                                            onChange={(e) => {
+                                                                const newRate = parseFloat(e.target.value) || 0;
+                                                                updateTempContamination(metal.name, newRate);
+                                                            }}
+                                                            style={{
+                                                                width: '80px',
+                                                                padding: '12px',
+                                                                border: `2px solid ${hasContaminationChanged ? '#ffc107' : '#555'}`,
+                                                                borderRadius: '6px',
+                                                                fontSize: '15px',
+                                                                backgroundColor: hasContaminationChanged ? '#3a3a3a' : '#333',
+                                                                color: '#fff',
+                                                                outline: 'none',
+                                                                fontWeight: 'bold'
+                                                            }}
+                                                        />
                                                     </td>
                                                     <td style={{
                                                         padding: '15px',
@@ -2231,11 +2955,19 @@ ${receiptText}
                                                     </td>
                                                     <td style={{
                                                         padding: '15px',
-                                                        color: isSaved ? '#6c757d' : '#28a745',
+                                                        color: isPriceSaved ? '#6c757d' : '#28a745',
                                                         fontWeight: 'bold',
                                                         fontSize: '16px'
                                                     }}>
-                                                        {metal.price} грн/кг
+                                                        {metal.price} грн
+                                                    </td>
+                                                    <td style={{
+                                                        padding: '15px',
+                                                        color: '#28a745',
+                                                        fontWeight: 'bold',
+                                                        fontSize: '16px'
+                                                    }}>
+                                                        {priceWithCont} грн
                                                     </td>
                                                     <td style={{ padding: '15px' }}>
                                                         <input
@@ -2248,12 +2980,12 @@ ${receiptText}
                                                                 updateTempPrice(metal.id, newPrice);
                                                             }}
                                                             style={{
-                                                                width: '140px',
+                                                                width: '120px',
                                                                 padding: '12px',
-                                                                border: `2px solid ${hasChanged ? '#ffc107' : '#555'}`,
+                                                                border: `2px solid ${hasPriceChanged ? '#ffc107' : '#555'}`,
                                                                 borderRadius: '6px',
                                                                 fontSize: '15px',
-                                                                backgroundColor: hasChanged ? '#3a3a3a' : '#333',
+                                                                backgroundColor: hasPriceChanged ? '#3a3a3a' : '#333',
                                                                 color: '#fff',
                                                                 outline: 'none',
                                                                 fontWeight: 'bold'
@@ -2262,15 +2994,20 @@ ${receiptText}
                                                     </td>
                                                     <td style={{ padding: '15px' }}>
                                                         <button
-                                                            onClick={() => updateMetalPrice(metal.id, metal.price, metal.name)}
-                                                            disabled={isSavingPrice || isSaved}
+                                                            onClick={() => {
+                                                                updateMetalPrice(metal.id, metal.price, metal.name);
+                                                                if (tempRate !== undefined) {
+                                                                    updateContaminationRate(metal.name, tempRate);
+                                                                }
+                                                            }}
+                                                            disabled={isSavingPrice || (!hasPriceChanged && !hasContaminationChanged)}
                                                             style={{
                                                                 padding: "10px 20px",
-                                                                backgroundColor: isSavingPrice || isSaved ? '#6c757d' : '#28a745',
+                                                                backgroundColor: isSavingPrice || (!hasPriceChanged && !hasContaminationChanged) ? '#6c757d' : '#28a745',
                                                                 color: 'white',
                                                                 border: 'none',
                                                                 borderRadius: '6px',
-                                                                cursor: isSavingPrice || isSaved ? 'not-allowed' : 'pointer',
+                                                                cursor: isSavingPrice || (!hasPriceChanged && !hasContaminationChanged) ? 'not-allowed' : 'pointer',
                                                                 fontSize: '14px',
                                                                 fontWeight: '500',
                                                                 display: 'flex',
@@ -2279,13 +3016,13 @@ ${receiptText}
                                                                 transition: 'all 0.3s'
                                                             }}
                                                             onMouseOver={(e) => {
-                                                                if (!isSavingPrice && !isSaved) e.target.style.backgroundColor = '#218838';
+                                                                if (!isSavingPrice && (hasPriceChanged || hasContaminationChanged)) e.target.style.backgroundColor = '#218838';
                                                             }}
                                                             onMouseOut={(e) => {
-                                                                if (!isSavingPrice && !isSaved) e.target.style.backgroundColor = '#28a745';
+                                                                if (!isSavingPrice && (hasPriceChanged || hasContaminationChanged)) e.target.style.backgroundColor = '#28a745';
                                                             }}
                                                         >
-                                                            {isSaved ? '✅ Збережено' : '💾 Зберегти'}
+                                                            {isPriceSaved && !hasContaminationChanged ? '✅ Збережено' : '💾 Зберегти'}
                                                         </button>
                                                     </td>
                                                 </tr>
@@ -2326,16 +3063,43 @@ ${receiptText}
                                         if (!isSavingPrice && Object.keys(tempPrices).length > 0) e.target.style.backgroundColor = '#007bff';
                                     }}
                                 >
-                                    💾 Зберегти всі зміни
+                                    💾 Зберегти всі зміни цін
                                 </button>
 
                                 <button
-                                    onClick={cancelAllChanges}
+                                    onClick={saveAllContaminationChanges}
+                                    disabled={isSavingPrice || Object.keys(tempContamination).length === 0}
+                                    style={{
+                                        padding: "15px 30px",
+                                        backgroundColor: isSavingPrice || Object.keys(tempContamination).length === 0 ? '#6c757d' : '#ffc107',
+                                        color: 'black',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        cursor: isSavingPrice || Object.keys(tempContamination).length === 0 ? 'not-allowed' : 'pointer',
+                                        fontSize: '16px',
+                                        fontWeight: 'bold',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        transition: 'all 0.3s'
+                                    }}
+                                    onMouseOver={(e) => {
+                                        if (!isSavingPrice && Object.keys(tempContamination).length > 0) e.target.style.backgroundColor = '#e0a800';
+                                    }}
+                                    onMouseOut={(e) => {
+                                        if (!isSavingPrice && Object.keys(tempContamination).length > 0) e.target.style.backgroundColor = '#ffc107';
+                                    }}
+                                >
+                                    💾 Зберегти всі зміни засмічення
+                                </button>
+
+                                <button
+                                    onClick={cancelAllPriceChanges}
                                     disabled={isSavingPrice || Object.keys(tempPrices).length === 0}
                                     style={{
                                         padding: "15px 30px",
-                                        backgroundColor: isSavingPrice || Object.keys(tempPrices).length === 0 ? '#6c757d' : '#ffc107',
-                                        color: 'black',
+                                        backgroundColor: isSavingPrice || Object.keys(tempPrices).length === 0 ? '#6c757d' : '#17a2b8',
+                                        color: 'white',
                                         border: 'none',
                                         borderRadius: '8px',
                                         cursor: isSavingPrice || Object.keys(tempPrices).length === 0 ? 'not-allowed' : 'pointer',
@@ -2347,13 +3111,40 @@ ${receiptText}
                                         transition: 'all 0.3s'
                                     }}
                                     onMouseOver={(e) => {
-                                        if (!isSavingPrice && Object.keys(tempPrices).length > 0) e.target.style.backgroundColor = '#e0a800';
+                                        if (!isSavingPrice && Object.keys(tempPrices).length > 0) e.target.style.BackgroundColor = '#138496';
                                     }}
                                     onMouseOut={(e) => {
-                                        if (!isSavingPrice && Object.keys(tempPrices).length > 0) e.target.style.backgroundColor = '#ffc107';
+                                        if (!isSavingPrice && Object.keys(tempPrices).length > 0) e.target.style.backgroundColor = '#17a2b8';
                                     }}
                                 >
-                                    ❌ Скасувати зміни
+                                    ❌ Скасувати зміни цін
+                                </button>
+
+                                <button
+                                    onClick={cancelContaminationChanges}
+                                    disabled={isSavingPrice || Object.keys(tempContamination).length === 0}
+                                    style={{
+                                        padding: "15px 30px",
+                                        backgroundColor: isSavingPrice || Object.keys(tempContamination).length === 0 ? '#6c757d' : '#dc3545',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        cursor: isSavingPrice || Object.keys(tempContamination).length === 0 ? 'not-allowed' : 'pointer',
+                                        fontSize: '16px',
+                                        fontWeight: 'bold',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        transition: 'all 0.3s'
+                                    }}
+                                    onMouseOver={(e) => {
+                                        if (!isSavingPrice && Object.keys(tempContamination).length > 0) e.target.style.backgroundColor = '#c82333';
+                                    }}
+                                    onMouseOut={(e) => {
+                                        if (!isSavingPrice && Object.keys(tempContamination).length > 0) e.target.style.backgroundColor = '#dc3545';
+                                    }}
+                                >
+                                    ❌ Скасувати зміни засмічення
                                 </button>
 
                                 <button
@@ -2361,7 +3152,7 @@ ${receiptText}
                                     disabled={isSavingPrice}
                                     style={{
                                         padding: "15px 30px",
-                                        backgroundColor: isSavingPrice ? '#6c757d' : '#17a2b8',
+                                        backgroundColor: isSavingPrice ? '#6c757d' : '#6f42c1',
                                         color: 'white',
                                         border: 'none',
                                         borderRadius: '8px',
@@ -2374,10 +3165,10 @@ ${receiptText}
                                         transition: 'all 0.3s'
                                     }}
                                     onMouseOver={(e) => {
-                                        if (!isSavingPrice) e.target.style.backgroundColor = '#138496';
+                                        if (!isSavingPrice) e.target.style.backgroundColor = '#5a32a3';
                                     }}
                                     onMouseOut={(e) => {
-                                        if (!isSavingPrice) e.target.style.backgroundColor = '#17a2b8';
+                                        if (!isSavingPrice) e.target.style.backgroundColor = '#6f42c1';
                                     }}
                                 >
                                     🔄 Скинути до стандартних
@@ -2435,29 +3226,6 @@ ${receiptText}
                                             fontSize: '0.9rem',
                                             marginBottom: '5px'
                                         }}>
-                                            Середня ціна:
-                                        </div>
-                                        <div style={{
-                                            color: '#28a745',
-                                            fontSize: '1.8rem',
-                                            fontWeight: 'bold'
-                                        }}>
-                                            {metalPrices.length > 0
-                                                ? Math.round(metalPrices.reduce((sum, metal) => sum + metal.price, 0) / metalPrices.length)
-                                                : 0} грн
-                                        </div>
-                                    </div>
-                                    <div style={{
-                                        backgroundColor: '#242424',
-                                        padding: '15px',
-                                        borderRadius: '6px',
-                                        border: '1px solid #404040'
-                                    }}>
-                                        <div style={{
-                                            color: '#aaa',
-                                            fontSize: '0.9rem',
-                                            marginBottom: '5px'
-                                        }}>
                                             Змінено цін:
                                         </div>
                                         <div style={{
@@ -2479,42 +3247,17 @@ ${receiptText}
                                             fontSize: '0.9rem',
                                             marginBottom: '5px'
                                         }}>
-                                            Статус:
+                                            Змінено засмічення:
                                         </div>
                                         <div style={{
-                                            color: Object.keys(tempPrices).length > 0 ? '#ffc107' : '#28a745',
-                                            fontSize: '1.2rem',
+                                            color: '#17a2b8',
+                                            fontSize: '1.8rem',
                                             fontWeight: 'bold'
                                         }}>
-                                            {Object.keys(tempPrices).length > 0 ? 'Є незбережені зміни' : 'Всі зміни збережено'}
+                                            {Object.keys(tempContamination).length}
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-
-                            <div style={{
-                                marginTop: '20px',
-                                padding: '15px',
-                                backgroundColor: '#1a1a1a',
-                                borderRadius: '6px',
-                                borderLeft: '4px solid #17a2b8'
-                            }}>
-                                <h4 style={{
-                                    color: '#ffffff',
-                                    marginBottom: '10px',
-                                    fontSize: '1rem'
-                                }}>
-                                    💡 Примітка:
-                                </h4>
-                                <p style={{
-                                    color: '#e0e0e0',
-                                    margin: 0,
-                                    fontSize: '0.9rem',
-                                    lineHeight: '1.5'
-                                }}>
-                                    Ціни автоматично зберігаються в вашому браузері (localStorage) та на сервері.
-                                    Вони залишаться навіть після оновлення сторінки або закриття браузера.
-                                </p>
                             </div>
                         </div>
                     </div>

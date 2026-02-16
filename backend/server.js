@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const Database = require("better-sqlite3");
+const fs = require('fs');
 
 const app = express();
 
@@ -13,7 +14,7 @@ const allowedOrigins = [
 
 app.use(cors({
     origin: (origin, callback) => {
-        if (!origin) return callback(null, true); // Postman або серверні запити
+        if (!origin) return callback(null, true);
         if (!allowedOrigins.includes(origin)) {
             return callback(new Error(`CORS policy: origin ${origin} not allowed`), false);
         }
@@ -30,58 +31,160 @@ const dbPath = process.env.NODE_ENV === "production"
     : path.join(__dirname, "..", "warehouse.db");
 
 console.log("📁 Database path:", dbPath);
+
+// Видаляємо стару базу даних якщо вона існує (тільки для розробки)
+if (process.env.NODE_ENV !== "production" && fs.existsSync(dbPath)) {
+    console.log("🗑️ Видаляємо стару базу даних...");
+    fs.unlinkSync(dbPath);
+    console.log("✅ Стару базу даних видалено");
+}
+
 const db = new Database(dbPath);
 
 // ====== МЕТАЛИ ======
 app.get("/api/metals", (req, res) => {
-    const today = new Date().toISOString().split("T")[0];
+    try {
+        const today = new Date().toISOString().split("T")[0];
 
-    db.exec(`
-        CREATE TABLE IF NOT EXISTS metals (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE
-        );
-        CREATE TABLE IF NOT EXISTS daily_prices (
-            metal_id INTEGER,
-            price INTEGER,
-            date TEXT,
-            PRIMARY KEY (metal_id, date)
-        );
-    `);
+        // Створюємо таблиці
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS metals (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE
+            );
+            CREATE TABLE IF NOT EXISTS daily_prices (
+                metal_id INTEGER,
+                price INTEGER,
+                date TEXT,
+                PRIMARY KEY (metal_id, date)
+            );
+        `);
 
-    const metalCount = db.prepare("SELECT COUNT(*) as count FROM metals").get().count;
+        const metalCount = db.prepare("SELECT COUNT(*) as count FROM metals").get().count;
 
-    if (metalCount === 0) {
-        const metals = [
-            ["Мідь", 388], ["Латунь", 235], ["Радіатор латунний", 210],
-            ["Алюміній побутовий", 65], ["Алюміній електротехнічний", 80],
-            ["Нержавіюча сталь", 45], ["Магній", 75], ["ЦАМ", 95],
-            ["Стружка мідна", 320], ["Стружка латунна", 180],
-            ["Свинець", 45], ["Свинець кабельний", 55],
-            ["Акумулятор білий", 20], ["Акумулятор чорний", 18],
-            ["Титан", 160], ["Чорний металобрухт", 8]
-        ];
+        // Якщо таблиця порожня або там менше ніж 64 метали - додаємо всі метали
+        if (metalCount < 64) {
+            console.log("🔄 Очищаємо старі метали...");
+            db.exec("DELETE FROM daily_prices");
+            db.exec("DELETE FROM metals");
 
-        const insert = db.prepare("INSERT INTO metals (name) VALUES (?)");
-        const insertPrice = db.prepare("INSERT INTO daily_prices (metal_id, price, date) VALUES (?, ?, ?)");
-        const addMetals = db.transaction(() => {
-            metals.forEach(([name, price]) => {
-                const result = insert.run(name);
-                insertPrice.run(result.lastInsertRowid, price, today);
+            // ОНОВЛЕНИЙ список металів
+            const metals = [
+                // Мідь та мідні сплави
+                [1, "Мідь блеск", 388],
+                [2, "Мідь М1", 388],
+                [3, "Мідь М3", 388],
+                [4, "Мідь фосфорна", 388],
+                [5, "Мідна стружка", 320],
+                [6, "Мідна лента", 380],
+                [7, "Мідний скрап", 350],
+
+                // Латунь
+                [8, "Латунь", 235],
+                [9, "Латунний радіатор", 210],
+                [10, "Латунна стружка", 180],
+                [11, "Латунний скрап", 220],
+                [12, "Стакан великий", 230],
+                [13, "Стакан маленький", 230],
+                [14, "ОЦС", 220],
+                [15, "БРАЖ", 220],
+
+                // Алюміній
+                [16, "Алюмінієвий провод", 70],
+                [17, "Алюміній піщевий", 65],
+                [18, "Алюмінієвий профіль", 65],
+                [19, "Алюмінієві діскі", 60],
+                [20, "Алюміній побутовий", 55],
+                [21, "АМГ", 75],
+                [22, "Алюмінієва банка", 50],
+                [23, "Алюмінієвий радіатор", 65],
+                [24, "Алюміній самолет", 85],
+                [25, "Алюміній военка", 95],
+                [26, "Алюміній моторняк", 75],
+                [27, "Алюмінієва стружка", 45],
+                [28, "Алюмінієвий скрап", 50],
+
+                // Нержавіюча сталь
+                [29, "Нержавейка (10% нікелю)", 90],
+                [30, "Нержавейка (10% Б55)", 90],
+                [31, "Нержавейка (9% нікелю)", 85],
+                [32, "Нержавейка (8% нікелю)", 80],
+                [33, "Нержавейка (0% нікелю)", 45],
+                [34, "Височка скрап", 70],
+                [35, "Нержавіюча стружка (10 9 8)", 60],
+                [36, "Нержавіючий скрап", 65],
+                [37, "Нікель", 350],
+                [38, "Нікель лом", 320],
+
+                // Кольорові метали
+                [39, "ЦАМ", 95],
+                [40, "Магній", 75],
+                [41, "Цинк", 50],
+
+                // Свинець та АКБ
+                [42, "Свинець кабельний", 55],
+                [43, "Свинець звичайний", 45],
+                [44, "Свинець шиномонтаж", 45],
+                [45, "АКБ білий", 20],
+                [46, "АКБ чорний", 18],
+                [47, "ТНЖ великі", 25],
+                [48, "ТНЖ маленькі", 25],
+                [49, "ТНЖ 4-к", 25],
+
+                // Рідкісні метали
+                [50, "Титан", 160],
+
+                // Сплави
+                [51, "Бабіт (16)", 120],
+                [52, "Бабіт (82)", 140],
+                [53, "Кремній", 80],
+                [54, "Мельхіор", 200],
+                [55, "МН", 200],
+                [56, "Олово", 300],
+                [57, "Припой", 280],
+
+                // Швидкорізи та спецсплави
+                [58, "Рапід Р6М5", 150],
+                [59, "Рапід Р18", 180],
+                [60, "Вольфрам", 400],
+                [61, "Молібден", 350],
+                [62, "Феромолібден", 250],
+                [63, "Ферованадій", 220],
+
+                // Чорний метал
+                [64, "Чорний метал", 8]
+            ];
+
+            console.log(`📦 Додаємо ${metals.length} металів...`);
+
+            const insert = db.prepare("INSERT INTO metals (id, name) VALUES (?, ?)");
+            const insertPrice = db.prepare("INSERT INTO daily_prices (metal_id, price, date) VALUES (?, ?, ?)");
+
+            const addMetals = db.transaction(() => {
+                metals.forEach(([id, name, price]) => {
+                    insert.run(id, name);
+                    insertPrice.run(id, price, today);
+                });
             });
-        });
-        addMetals();
+
+            addMetals();
+            console.log(`✅ Додано ${metals.length} металів до бази даних`);
+        }
+
+        const metals = db.prepare(`
+            SELECT m.id, m.name, COALESCE(dp.price, 0) as price
+            FROM metals m
+            LEFT JOIN daily_prices dp
+              ON m.id = dp.metal_id AND dp.date = ?
+            ORDER BY m.id
+        `).all(today);
+
+        console.log(`📊 Відправляємо ${metals.length} металів`);
+        res.json(metals);
+    } catch (err) {
+        console.error("❌ Помилка в /api/metals:", err);
+        res.status(500).json({ error: err.message });
     }
-
-    const metals = db.prepare(`
-        SELECT m.id, m.name, COALESCE(dp.price, 0) as price
-        FROM metals m
-        LEFT JOIN daily_prices dp
-          ON m.id = dp.metal_id AND dp.date = ?
-        ORDER BY m.id
-    `).all(today);
-
-    res.json(metals);
 });
 
 app.put("/api/metals/:id", (req, res) => {

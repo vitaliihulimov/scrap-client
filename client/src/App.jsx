@@ -48,7 +48,9 @@ const initialContaminationRates = {
     "Нержавейка (8% нікелю)": 0.5,
     "Нержавейка (0% нікелю)": 0.5,
     "Височка скрап": 1,
-    "Нержавіюча стружка (10 9 8)": 0.5,
+    "Нержавіюча стружка 10%": 0.5,  // Розділено на три позиції
+    "Нержавіюча стружка 9%": 0.5,
+    "Нержавіюча стружка 8%": 0.5,
     "Нержавіючий скрап": 1,
     "Нікель": 0,
     "Нікель лом": 1,
@@ -72,11 +74,24 @@ const initialContaminationRates = {
     "Титан": 0.5,
 
     // Сплави
+    "Бабіт (16)": 1,    // Додано нові метали
+    "Бабіт (82)": 1,
     "Кремній": 1,
     "Мельхіор": 1,
     "МН": 1,
     "Олово": 0,
-    "Припой": 0
+    "Припой": 0,
+
+    // Швидкорізи та спецсплави
+    "Рапід Р6М5": 1,    // Додано нові метали
+    "Рапід Р18": 1,
+    "Вольфрам": 0.5,
+    "Молібден": 0.5,
+    "Феромолібден": 1,
+    "Ферованадій": 1,
+
+    // Чорний метал
+    "Чорний метал": 0.5  // Додано чорний метал
 };
 
 export default function App() {
@@ -140,6 +155,102 @@ export default function App() {
         return Math.floor(weight * priceWithCont);
     };
 
+    // Функція для скорочення назв металів
+    const shortenMetalName = (name) => {
+        const shortenings = {
+            // Мідь та мідні сплави
+            "Мідь блеск": "Мідь бл",
+            "Мідь М1": "Мідь М1",
+            "Мідь М3": "Мідь М3",
+            "Мідь фосфорна": "Мідь фос",
+            "Мідна стружка": "Мід стр",
+            "Мідна лента": "Мід лент",
+            "Мідний скрап": "Мід скрап",
+
+            // Латунь
+            "Латунь": "Латунь",
+            "Латунний радіатор": "Лат рад",
+            "Латунна стружка": "Лат стр",
+            "Латунний скрап": "Лат скрап",
+            "Стакан великий": "Стак вел",
+            "Стакан маленький": "Стак мал",
+            "ОЦС": "ОЦС",
+            "БРАЖ": "БРАЖ",
+
+            // Алюміній
+            "Алюмінієвий провод": "Ал пров",
+            "Алюміній піщевий": "Ал піщ",
+            "Алюмінієвий профіль": "Ал проф",
+            "Алюмінієві діскі": "Ал діск",
+            "Алюміній побутовий": "Ал поб",
+            "АМГ": "АМГ",
+            "Алюмінієва банка": "Ал бан",
+            "Алюмінієвий радіатор": "Ал рад",
+            "Алюміній самолет": "Ал сам",
+            "Алюміній военка": "Ал воєн",
+            "Алюміній моторняк": "Ал мот",
+            "Алюмінієва стружка": "Ал стр",
+            "Алюмінієвий скрап": "Ал скрап",
+
+            // Нержавіюча сталь
+            "Нержавейка (10% нікелю)": "Нерж 10%",
+            "Нержавейка (10% Б55)": "Нерж Б55",
+            "Нержавейка (9% нікелю)": "Нерж 9%",
+            "Нержавейка (8% нікелю)": "Нерж 8%",
+            "Нержавейка (0% нікелю)": "Нерж 0%",
+            "Височка скрап": "Вис скр",
+            "Нержавіюча стружка 10%": "Нерж стр10%",
+            "Нержавіюча стружка 9%": "Нерж стр9%",
+            "Нержавіюча стружка 8%": "Нерж стр8%",
+            "Нержавіюча стружка (10%)": "Нерж стр10%",
+            "Нержавіюча стружка (9%)": "Нерж стр9%",
+            "Нержавіюча стружка (8%)": "Нерж стр8%",
+            "Нержавіючий скрап": "Нерж скр",
+            "Нікель": "Нікель",
+            "Нікель лом": "Нік лом",
+
+            // Кольорові метали
+            "ЦАМ": "ЦАМ",
+            "Магній": "Магній",
+            "Цинк": "Цинк",
+
+            // Свинець та АКБ
+            "Свинець кабельний": "Св каб",
+            "Свинець звичайний": "Св зв",
+            "Свинець шиномонтаж": "Св шин",
+            "АКБ білий": "АКБ біл",
+            "АКБ чорний": "АКБ чор",
+            "ТНЖ великі": "ТНЖ вел",
+            "ТНЖ маленькі": "ТНЖ мал",
+            "ТНЖ 4-к": "ТНЖ 4к",
+
+            // Рідкісні метали
+            "Титан": "Титан",
+
+            // Сплави
+            "Бабіт (16)": "Баб 16",
+            "Бабіт (82)": "Баб 82",
+            "Кремній": "Крем",
+            "Мельхіор": "Мельх",
+            "МН": "МН",
+            "Олово": "Олово",
+            "Припой": "Припой",
+
+            // Швидкорізи та спецсплави
+            "Рапід Р6М5": "Р6М5",
+            "Рапід Р18": "Р18",
+            "Вольфрам": "Вольф",
+            "Молібден": "Моліб",
+            "Феромолібден": "Феромол",
+            "Ферованадій": "Ферован",
+
+            // Чорний метал
+            "Чорний метал": "Чорн мет"
+        };
+
+        return shortenings[name] || name.substring(0, 8);
+    };
+
     // ОНОВЛЕНІ тестові метали з вашим списком
     const initialTestMetals = [
         // Мідь та мідні сплави
@@ -183,48 +294,50 @@ export default function App() {
         { id: 32, name: "Нержавейка (8% нікелю)", price: 80, weight: "", initialPrice: 80 },
         { id: 33, name: "Нержавейка (0% нікелю)", price: 45, weight: "", initialPrice: 45 },
         { id: 34, name: "Височка скрап", price: 70, weight: "", initialPrice: 70 },
-        { id: 35, name: "Нержавіюча стружка (10 9 8)", price: 60, weight: "", initialPrice: 60 },
-        { id: 36, name: "Нержавіючий скрап", price: 65, weight: "", initialPrice: 65 },
-        { id: 37, name: "Нікель", price: 350, weight: "", initialPrice: 350 },
-        { id: 38, name: "Нікель лом", price: 320, weight: "", initialPrice: 320 },
+        { id: 35, name: "Нержавіюча стружка (10%)", price: 60, weight: "", initialPrice: 60 },  // Розділено на три
+        { id: 36, name: "Нержавіюча стружка (9%)", price: 60, weight: "", initialPrice: 60 },
+        { id: 37, name: "Нержавіюча стружка (8%)", price: 60, weight: "", initialPrice: 60 },
+        { id: 38, name: "Нержавіючий скрап", price: 65, weight: "", initialPrice: 65 },
+        { id: 39, name: "Нікель", price: 350, weight: "", initialPrice: 350 },
+        { id: 40, name: "Нікель лом", price: 320, weight: "", initialPrice: 320 },
 
         // Кольорові метали
-        { id: 39, name: "ЦАМ", price: 95, weight: "", initialPrice: 95 },
-        { id: 40, name: "Магній", price: 75, weight: "", initialPrice: 75 },
-        { id: 41, name: "Цинк", price: 50, weight: "", initialPrice: 50 },
+        { id: 41, name: "ЦАМ", price: 95, weight: "", initialPrice: 95 },
+        { id: 42, name: "Магній", price: 75, weight: "", initialPrice: 75 },
+        { id: 43, name: "Цинк", price: 50, weight: "", initialPrice: 50 },
 
         // Свинець та АКБ
-        { id: 42, name: "Свинець кабельний", price: 55, weight: "", initialPrice: 55 },
-        { id: 43, name: "Свинець звичайний", price: 45, weight: "", initialPrice: 45 },
-        { id: 44, name: "Свинець шиномонтаж", price: 45, weight: "", initialPrice: 45 },
-        { id: 45, name: "АКБ білий", price: 20, weight: "", initialPrice: 20 },
-        { id: 46, name: "АКБ чорний", price: 18, weight: "", initialPrice: 18 },
-        { id: 47, name: "ТНЖ великі", price: 25, weight: "", initialPrice: 25 },
-        { id: 48, name: "ТНЖ маленькі", price: 25, weight: "", initialPrice: 25 },
-        { id: 49, name: "ТНЖ 4-к", price: 25, weight: "", initialPrice: 25 },
+        { id: 44, name: "Свинець кабельний", price: 55, weight: "", initialPrice: 55 },
+        { id: 45, name: "Свинець звичайний", price: 45, weight: "", initialPrice: 45 },
+        { id: 46, name: "Свинець шиномонтаж", price: 45, weight: "", initialPrice: 45 },
+        { id: 47, name: "АКБ білий", price: 20, weight: "", initialPrice: 20 },
+        { id: 48, name: "АКБ чорний", price: 18, weight: "", initialPrice: 18 },
+        { id: 49, name: "ТНЖ великі", price: 25, weight: "", initialPrice: 25 },
+        { id: 50, name: "ТНЖ маленькі", price: 25, weight: "", initialPrice: 25 },
+        { id: 51, name: "ТНЖ 4-к", price: 25, weight: "", initialPrice: 25 },
 
         // Рідкісні метали
-        { id: 50, name: "Титан", price: 160, weight: "", initialPrice: 160 },
+        { id: 52, name: "Титан", price: 160, weight: "", initialPrice: 160 },
 
         // Сплави
-        { id: 51, name: "Бабіт (16)", price: 120, weight: "", initialPrice: 120 },
-        { id: 52, name: "Бабіт (82)", price: 140, weight: "", initialPrice: 140 },
-        { id: 53, name: "Кремній", price: 80, weight: "", initialPrice: 80 },
-        { id: 54, name: "Мельхіор", price: 200, weight: "", initialPrice: 200 },
-        { id: 55, name: "МН", price: 200, weight: "", initialPrice: 200 },
-        { id: 56, name: "Олово", price: 300, weight: "", initialPrice: 300 },
-        { id: 57, name: "Припой", price: 280, weight: "", initialPrice: 280 },
+        { id: 53, name: "Бабіт (16)", price: 120, weight: "", initialPrice: 120 },
+        { id: 54, name: "Бабіт (82)", price: 140, weight: "", initialPrice: 140 },
+        { id: 55, name: "Кремній", price: 80, weight: "", initialPrice: 80 },
+        { id: 56, name: "Мельхіор", price: 200, weight: "", initialPrice: 200 },
+        { id: 57, name: "МН", price: 200, weight: "", initialPrice: 200 },
+        { id: 58, name: "Олово", price: 300, weight: "", initialPrice: 300 },
+        { id: 59, name: "Припой", price: 280, weight: "", initialPrice: 280 },
 
         // Швидкорізи та спецсплави
-        { id: 58, name: "Рапід Р6М5", price: 150, weight: "", initialPrice: 150 },
-        { id: 59, name: "Рапід Р18", price: 180, weight: "", initialPrice: 180 },
-        { id: 60, name: "Вольфрам", price: 400, weight: "", initialPrice: 400 },
-        { id: 61, name: "Молібден", price: 350, weight: "", initialPrice: 350 },
-        { id: 62, name: "Феромолібден", price: 250, weight: "", initialPrice: 250 },
-        { id: 63, name: "Ферованадій", price: 220, weight: "", initialPrice: 220 },
+        { id: 60, name: "Рапід Р6М5", price: 150, weight: "", initialPrice: 150 },
+        { id: 61, name: "Рапід Р18", price: 180, weight: "", initialPrice: 180 },
+        { id: 62, name: "Вольфрам", price: 400, weight: "", initialPrice: 400 },
+        { id: 63, name: "Молібден", price: 350, weight: "", initialPrice: 350 },
+        { id: 64, name: "Феромолібден", price: 250, weight: "", initialPrice: 250 },
+        { id: 65, name: "Ферованадій", price: 220, weight: "", initialPrice: 220 },
 
         // Чорний метал
-        { id: 64, name: "Чорний метал", price: 8, weight: "", initialPrice: 8 }
+        { id: 66, name: "Чорний метал", price: 8, weight: "", initialPrice: 8 }
     ];
 
     // Функція для очищення localStorage
@@ -311,8 +424,10 @@ export default function App() {
     useEffect(() => {
         const loadInitialData = async () => {
             try {
-                // Завантажуємо відсотки засмічення з localStorage
+                // Спочатку завантажуємо збережені ціни з localStorage
+                const savedPrices = loadPricesFromLocalStorage();
                 const savedRates = loadContaminationRatesFromLocalStorage();
+
                 if (savedRates) {
                     setContaminationRates(savedRates);
                 }
@@ -326,29 +441,44 @@ export default function App() {
                         const data = await res.json();
                         console.log('Метали з сервера:', data);
 
-                        // Використовуємо дані з сервера
-                        formattedData = data.map(m => ({
-                            ...m,
-                            weight: "",
-                            initialPrice: m.price
-                        }));
+                        // Використовуємо дані з сервера, але якщо є збережені ціни - застосовуємо їх
+                        formattedData = data.map(m => {
+                            // Перевіряємо, чи є збережена ціна для цього металу
+                            const savedPrice = savedPrices?.find(p => p.id === m.id);
+                            return {
+                                ...m,
+                                price: savedPrice ? savedPrice.price : m.price,
+                                weight: "",
+                                initialPrice: savedPrice ? savedPrice.price : m.price
+                            };
+                        });
                     } else {
                         throw new Error('Сервер не відповідає');
                     }
                 } catch (serverError) {
                     console.log("Сервер недоступний, використовуємо тестові дані:", serverError);
-                    // Використовуємо тестові дані
-                    formattedData = initialTestMetals.map(metal => ({
-                        ...metal,
-                        defaultPrice: metal.price
-                    }));
+
+                    // Використовуємо тестові дані, але якщо є збережені ціни - застосовуємо їх
+                    formattedData = initialTestMetals.map(metal => {
+                        // Перевіряємо, чи є збережена ціна для цього металу
+                        const savedPrice = savedPrices?.find(p => p.id === metal.id);
+                        return {
+                            ...metal,
+                            price: savedPrice ? savedPrice.price : metal.price,
+                            defaultPrice: savedPrice ? savedPrice.price : metal.price
+                        };
+                    });
                 }
 
                 setItems(formattedData);
                 initialItemsRef.current = formattedData;
 
-                // Завантажуємо ціни для адмін панелі
-                setMetalPrices(formattedData);
+                // Завантажуємо ціни для адмін панелі - використовуємо збережені або нові
+                if (savedPrices) {
+                    setMetalPrices(savedPrices);
+                } else {
+                    setMetalPrices(formattedData);
+                }
 
                 // 2. Завантажуємо накладні з сервера або localStorage
                 try {
@@ -360,7 +490,7 @@ export default function App() {
                         // Перераховуємо всі накладні з правильним округленням
                         const processedInvoices = serverInvoices.map(inv => {
                             const processedItems = inv.items.map(item => {
-                                const rate = item.contaminationRate || contaminationRates[item.name] || 0;
+                                const rate = item.contaminationRate || (savedRates ? savedRates[item.name] : 0) || 0;
 
                                 // Розраховуємо правильну ціну з засміченням
                                 let priceWithCont;
@@ -403,7 +533,7 @@ export default function App() {
                             // Перераховуємо всі накладні з правильним округленням
                             const processedInvoices = savedInvoices.map(inv => {
                                 const processedItems = inv.items.map(item => {
-                                    const rate = item.contaminationRate || contaminationRates[item.name] || 0;
+                                    const rate = item.contaminationRate || (savedRates ? savedRates[item.name] : 0) || 0;
 
                                     // Розраховуємо правильну ціну з засміченням
                                     let priceWithCont;
@@ -450,7 +580,7 @@ export default function App() {
                         // Перераховуємо всі накладні з правильним округленням
                         const processedInvoices = savedInvoices.map(inv => {
                             const processedItems = inv.items.map(item => {
-                                const rate = item.contaminationRate || contaminationRates[item.name] || 0;
+                                const rate = item.contaminationRate || (savedRates ? savedRates[item.name] : 0) || 0;
 
                                 // Розраховуємо правильну ціну з засміченням
                                 let priceWithCont;
@@ -494,15 +624,33 @@ export default function App() {
             } catch (error) {
                 console.error("Помилка завантаження даних:", error);
 
-                // Завантажуємо тестові дані
-                const metalsWithDefaults = initialTestMetals.map(metal => ({
-                    ...metal,
-                    defaultPrice: metal.price
-                }));
+                // Завантажуємо збережені ціни з localStorage
+                const savedPrices = loadPricesFromLocalStorage();
+                const savedRates = loadContaminationRatesFromLocalStorage();
+
+                if (savedRates) {
+                    setContaminationRates(savedRates);
+                }
+
+                // Завантажуємо тестові дані, але застосовуємо збережені ціни
+                const metalsWithDefaults = initialTestMetals.map(metal => {
+                    const savedPrice = savedPrices?.find(p => p.id === metal.id);
+                    return {
+                        ...metal,
+                        price: savedPrice ? savedPrice.price : metal.price,
+                        defaultPrice: savedPrice ? savedPrice.price : metal.price
+                    };
+                });
 
                 setItems(metalsWithDefaults);
                 initialItemsRef.current = metalsWithDefaults;
-                setMetalPrices(metalsWithDefaults);
+
+                // Використовуємо збережені ціни для адмін панелі
+                if (savedPrices) {
+                    setMetalPrices(savedPrices);
+                } else {
+                    setMetalPrices(metalsWithDefaults);
+                }
 
                 // Накладні тільки з localStorage
                 const savedInvoices = loadInvoicesFromLocalStorage();
@@ -510,7 +658,7 @@ export default function App() {
                     // Перераховуємо всі накладні з правильним округленням
                     const processedInvoices = savedInvoices.map(inv => {
                         const processedItems = inv.items.map(item => {
-                            const rate = item.contaminationRate || contaminationRates[item.name] || 0;
+                            const rate = item.contaminationRate || (savedRates ? savedRates[item.name] : 0) || 0;
 
                             // Розраховуємо правильну ціну з засміченням
                             let priceWithCont;
@@ -1509,15 +1657,19 @@ export default function App() {
 
         receipt += "-".repeat(maxWidth) + "\n";
 
-        receipt += "МЕТАЛ   ЗАСМ  ЦІНА ЦЗ  ВАГА     СУМА\n";
+        receipt += "МЕТАЛ       ЗАСМ ЦІНА ЦЗ  ВАГА    СУМА\n";
         receipt += "-".repeat(maxWidth) + "\n";
 
         invoice.items.forEach(item => {
-            let name = item.name || "Метал";
-            if (name.length > 8) {
-                name = name.substring(0, 8);
+
+            // Використовуємо скорочену назву
+            let name = shortenMetalName(item.name || "Метал");
+
+            // Забезпечуємо фіксовану ширину (10 символів для кращої читабельності)
+            if (name.length > 10) {
+                name = name.substring(0, 10);
             }
-            name = name.padEnd(8, ' ');
+            name = name.padEnd(10, ' ');
 
             // Отримуємо відсоток засмічення
             const rate = item.contaminationRate || 0;
@@ -1525,13 +1677,13 @@ export default function App() {
             // Отримуємо ціну з засміченням
             const priceWithCont = item.priceWithContamination || item.price;
 
-            const rateStr = rate.toString().padStart(2, ' ');
+            const rateStr = rate.toString().padStart(2, ' ') + '%';
             const priceStr = (item.price || 0).toString().padStart(4, ' ');
             const priceWithContStr = priceWithCont.toString().padStart(4, ' ');
-            const weightStr = (Number(item.weight) || 0).toFixed(2).padStart(4, ' ');
-            const sumStr = (item.sum || 0).toString().padStart(6, ' ');
+            const weightStr = (Number(item.weight) || 0).toFixed(2).padStart(6, ' ');
+            const sumStr = (item.sum || 0).toString().padStart(7, ' ');
 
-            receipt += `${name} ${rateStr}% ${priceStr} ${priceWithContStr} ${weightStr} ${sumStr}\n`;
+            receipt += `${name} ${rateStr} ${priceStr} ${priceWithContStr} ${weightStr} ${sumStr}\n`;
         });
 
         receipt += "=".repeat(maxWidth) + "\n";

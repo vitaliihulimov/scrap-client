@@ -149,7 +149,7 @@ const initializeContaminationRates = () => {
                 "Ферованадій": 1,
 
                 // Чорний метал
-                "Чорний метал": 0,
+                "Чорний метал": 0
             };
 
             for (const [metalName, rate] of Object.entries(initialRates)) {
@@ -410,6 +410,7 @@ app.put("/api/contamination", (req, res) => {
 });
 
 // Оновити засмічення для одного металу
+// Оновити засмічення для одного металу
 app.put("/api/contamination/:metalName", (req, res) => {
     try {
         const metalName = decodeURIComponent(req.params.metalName);
@@ -431,13 +432,16 @@ app.put("/api/contamination/:metalName", (req, res) => {
             );
         `);
 
-        // Вставляємо або оновлюємо
-        const result = db.prepare(`
-            INSERT INTO contamination_rates (metal_name, rate, updated_at) 
-            VALUES (?, ?, ?)
-            ON CONFLICT(metal_name) 
-            DO UPDATE SET rate = excluded.rate, updated_at = excluded.updated_at
-        `).run(metalName, rate, now);
+        // Простий варіант без ON CONFLICT
+        const existing = db.prepare("SELECT * FROM contamination_rates WHERE metal_name = ?").get(metalName);
+
+        if (existing) {
+            db.prepare("UPDATE contamination_rates SET rate = ?, updated_at = ? WHERE metal_name = ?")
+                .run(rate, now, metalName);
+        } else {
+            db.prepare("INSERT INTO contamination_rates (metal_name, rate, updated_at) VALUES (?, ?, ?)")
+                .run(metalName, rate, now);
+        }
 
         console.log(`✅ Оновлено засмічення для "${metalName}": ${rate}%`);
         res.json({

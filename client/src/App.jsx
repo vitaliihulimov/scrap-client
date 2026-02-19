@@ -811,7 +811,7 @@ export default function App() {
             return;
         }
 
-        // 1. Спочатку оновлюємо локально (для миттєвого відображення)
+        // 1. Оновлюємо локально (для миттєвого відображення)
         setContaminationRates(prev => {
             const updated = { ...prev, [metalName]: newRate };
             saveContaminationRatesToLocalStorage(updated);
@@ -820,6 +820,8 @@ export default function App() {
 
         // 2. Відправляємо на сервер
         try {
+            console.log(`🔄 Відправляємо на сервер: ${metalName} = ${newRate}%`);
+
             const response = await fetch(`${API_BASE_URL}/contamination/${encodeURIComponent(metalName)}`, {
                 method: 'PUT',
                 headers: {
@@ -829,15 +831,15 @@ export default function App() {
             });
 
             if (response.ok) {
-                console.log(`✅ Засмічення для ${metalName} оновлено на сервері`);
+                const result = await response.json();
+                console.log(`✅ Збережено на сервері:`, result);
             } else {
-                console.error('❌ Помилка при оновленні на сервері');
-                // Можна додати повідомлення для користувача
-                alert('Помилка при збереженні на сервері, але локально збережено');
+                console.error('❌ Помилка сервера:', response.status);
+                alert('Помилка при збереженні на сервері');
             }
         } catch (error) {
-            console.error('❌ Сервер недоступний, зміни збережено тільки локально:', error);
-            alert('⚠️ Сервер недоступний. Зміни збережено тільки на цьому пристрої');
+            console.error('❌ Сервер недоступний:', error);
+            alert('⚠️ Сервер недоступний. Зміни збережено тільки локально');
         }
     };
 
@@ -850,20 +852,41 @@ export default function App() {
     };
 
     // Функція для збереження всіх змін засмічення
-    const saveAllContaminationChanges = () => {
+    const saveAllContaminationChanges = async () => {
         if (Object.keys(tempContamination).length === 0) {
             alert("Немає змін для збереження");
             return;
         }
 
-        setContaminationRates(prev => {
-            const updated = { ...prev, ...tempContamination };
-            saveContaminationRatesToLocalStorage(updated);
-            return updated;
-        });
+        // Об'єднуємо поточні значення з тимчасовими змінами
+        const updatedRates = { ...contaminationRates, ...tempContamination };
 
-        setTempContamination({});
-        alert("✅ Всі зміни засмічення збережено!");
+        // Оновлюємо локально
+        setContaminationRates(updatedRates);
+        saveContaminationRatesToLocalStorage(updatedRates);
+
+        // Відправляємо на сервер
+        try {
+            console.log('🔄 Відправляємо всі зміни на сервер:', updatedRates);
+
+            const response = await fetch(`${API_BASE_URL}/contamination`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(updatedRates)
+            });
+
+            if (response.ok) {
+                setTempContamination({});
+                alert("✅ Всі зміни засмічення збережено на сервері!");
+            } else {
+                alert('❌ Помилка при збереженні на сервері');
+            }
+        } catch (error) {
+            console.error('❌ Сервер недоступний:', error);
+            alert('⚠️ Зміни збережено локально, але сервер недоступний');
+        }
     };
 
     // Функція для скасування змін засмічення

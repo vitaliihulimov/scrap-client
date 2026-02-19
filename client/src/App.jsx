@@ -618,6 +618,23 @@ export default function App() {
                     }
                 }
 
+                // 3. 👇 НОВЕ: Завантажуємо актуальні відсотки засмічення з сервера
+                try {
+                    const contRes = await fetch(`${API_BASE_URL}/contamination`);
+                    if (contRes.ok) {
+                        const serverRates = await contRes.json();
+                        // Перевіряємо, чи є дані від сервера
+                        if (Object.keys(serverRates).length > 0) {
+                            setContaminationRates(serverRates);
+                            saveContaminationRatesToLocalStorage(serverRates);
+                            console.log('📊 Засмічення оновлено з сервера:', Object.keys(serverRates).length);
+                        }
+                    }
+                } catch (contError) {
+                    console.log('Сервер недоступний для завантаження засмічення, використовую локальні дані');
+                    // Локальні дані вже встановлені на початку з savedRates
+                }
+
                 setInvoicesLoaded(true);
                 setLoading(false);
 
@@ -693,6 +710,21 @@ export default function App() {
                     setInvoices(processedInvoices);
                 } else {
                     setInvoices([]);
+                }
+
+                // 👇 І в блоці помилок теж пробуємо завантажити засмічення з сервера
+                try {
+                    const contRes = await fetch(`${API_BASE_URL}/contamination`);
+                    if (contRes.ok) {
+                        const serverRates = await contRes.json();
+                        if (Object.keys(serverRates).length > 0) {
+                            setContaminationRates(serverRates);
+                            saveContaminationRatesToLocalStorage(serverRates);
+                        }
+                    }
+                } catch (contError) {
+                    // Ігноруємо, локальні дані вже є
+                    console.log('Використовую локальні дані засмічення');
                 }
 
                 setInvoicesLoaded(true);
@@ -773,17 +805,40 @@ export default function App() {
     }, [invoicesLoaded, syncInvoicesFromServer]);
 
     // Функція для оновлення відсотка засмічення
-    const updateContaminationRate = (metalName, newRate) => {
+    const updateContaminationRate = async (metalName, newRate) => {
         if (newRate < 0 || newRate > 100) {
             alert("Відсоток засмічення має бути від 0 до 100");
             return;
         }
 
+        // 1. Спочатку оновлюємо локально (для миттєвого відображення)
         setContaminationRates(prev => {
             const updated = { ...prev, [metalName]: newRate };
             saveContaminationRatesToLocalStorage(updated);
             return updated;
         });
+
+        // 2. Відправляємо на сервер
+        try {
+            const response = await fetch(`${API_BASE_URL}/contamination/${encodeURIComponent(metalName)}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ rate: newRate })
+            });
+
+            if (response.ok) {
+                console.log(`✅ Засмічення для ${metalName} оновлено на сервері`);
+            } else {
+                console.error('❌ Помилка при оновленні на сервері');
+                // Можна додати повідомлення для користувача
+                alert('Помилка при збереженні на сервері, але локально збережено');
+            }
+        } catch (error) {
+            console.error('❌ Сервер недоступний, зміни збережено тільки локально:', error);
+            alert('⚠️ Сервер недоступний. Зміни збережено тільки на цьому пристрої');
+        }
     };
 
     // Функція для тимчасової зміни засмічення в адмін-панелі

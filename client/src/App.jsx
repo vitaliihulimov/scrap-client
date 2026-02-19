@@ -1218,7 +1218,8 @@ export default function App() {
         setItems(initialItemsRef.current.map(item => ({
             ...item,
             weight: "",
-            price: item.initialPrice
+            price: item.initialPrice,
+            tempContamination: undefined // Видаляємо тимчасові значення
         })));
     };
 
@@ -1236,9 +1237,12 @@ export default function App() {
         setIsSaving(true);
 
         try {
-            // Створюємо об'єкт накладної з правильними даними (ті самі розрахунки що й у viewReceipt)
+            // Створюємо об'єкт накладної з тимчасовими значеннями засмічення
             const invoiceItems = itemsWithWeight.map(item => {
-                const rate = contaminationRates[item.name] || 0;
+                // ВАЖЛИВО: Використовуємо тимчасове засмічення, якщо воно є, інакше глобальне
+                const rate = item.tempContamination !== undefined
+                    ? item.tempContamination
+                    : (contaminationRates[item.name] || 0);
 
                 // Розраховуємо ціну з засміченням з округленням вниз
                 const priceAfterCont = item.price * (1 - rate / 100);
@@ -1257,7 +1261,7 @@ export default function App() {
                     name: item.name,
                     price: item.price,
                     priceWithContamination: priceWithCont,
-                    contaminationRate: rate,
+                    contaminationRate: rate, // Зберігаємо ВИКОРИСТАНЕ засмічення
                     weight: weight,
                     sum: sum
                 };
@@ -1267,10 +1271,11 @@ export default function App() {
 
             const newInvoice = {
                 items: invoiceItems,
-                total: invoiceTotal
+                total: invoiceTotal,
+                created_at: new Date().toISOString() // Додаємо дату
             };
 
-            console.log("Збереження накладної:", newInvoice); // Для перевірки
+            console.log("Збереження накладної:", newInvoice);
 
             // Зберігаємо на сервері
             try {
@@ -1285,17 +1290,28 @@ export default function App() {
                 if (res.ok) {
                     const result = await res.json();
 
-                    // Оновлюємо список накладних
-                    await syncInvoicesFromServer();
-
-                    viewReceipt({
+                    // Додаємо ID від сервера до накладної
+                    const savedInvoice = {
                         id: result.invoiceId,
-                        created_at: result.createdAt,
-                        total: invoiceTotal,
-                        items: invoiceItems
-                    });
+                        ...newInvoice
+                    };
 
-                    resetForm();
+                    // Оновлюємо список накладних
+                    const updatedInvoices = [savedInvoice, ...invoices];
+                    setInvoices(updatedInvoices);
+                    saveInvoicesToLocalStorage(updatedInvoices);
+
+                    // Показуємо чек
+                    viewReceipt(savedInvoice);
+
+                    // Скидаємо форму і очищаємо тимчасові значення
+                    setItems(prev => prev.map(item => ({
+                        ...item,
+                        weight: "",
+                        price: item.initialPrice,
+                        tempContamination: undefined // Видаляємо тимчасові значення
+                    })));
+
                     alert(`Накладна №${result.invoiceId} успішно збережена!`);
                 } else {
                     throw new Error('Помилка збереження');
@@ -1310,9 +1326,7 @@ export default function App() {
 
                 const localInvoice = {
                     id: newInvoiceId,
-                    created_at: new Date().toISOString(),
-                    total: invoiceTotal,
-                    items: invoiceItems
+                    ...newInvoice
                 };
 
                 const updatedInvoices = [localInvoice, ...invoices];
@@ -1320,7 +1334,15 @@ export default function App() {
                 saveInvoicesToLocalStorage(updatedInvoices);
 
                 viewReceipt(localInvoice);
-                resetForm();
+
+                // Скидаємо форму і очищаємо тимчасові значення
+                setItems(prev => prev.map(item => ({
+                    ...item,
+                    weight: "",
+                    price: item.initialPrice,
+                    tempContamination: undefined // Видаляємо тимчасові значення
+                })));
+
                 alert(`Накладна №${newInvoiceId} збережена локально!`);
             }
 
@@ -2441,7 +2463,12 @@ ${receiptText}
                                                     value={currentRate}
                                                     onChange={(e) => {
                                                         const newRate = parseFloat(e.target.value) || 0;
-                                                        updateContaminationRate(i.name, newRate);
+                                                        // Змінюємо ТІЛЬКИ для цього рядка, НЕ зберігаємо глобально
+                                                        setItems(prev => prev.map(item =>
+                                                            item.id === i.id
+                                                                ? { ...item, tempContamination: newRate }
+                                                                : item
+                                                        ));
                                                     }}
                                                     style={{
                                                         width: '80px',
@@ -3159,6 +3186,7 @@ ${receiptText}
                                                             value={tempRate !== undefined ? tempRate : currentRate}
                                                             onChange={(e) => {
                                                                 const newRate = parseFloat(e.target.value) || 0;
+                                                                // ТІЛЬКИ тут змінюємо глобальне засмічення
                                                                 updateTempContamination(metal.name, newRate);
                                                             }}
                                                             style={{

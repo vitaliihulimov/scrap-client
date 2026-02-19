@@ -5,6 +5,9 @@ const API_BASE_URL = import.meta.env.VITE_API_URL ?
     `${import.meta.env.VITE_API_URL}/api` :
     'http://localhost:3000/api';
 
+// Пароль для адмін-панелі
+const ADMIN_PASSWORD = "11111"; // Змініть на свій пароль
+
 // Початкові відсотки засмічення для кожного металу
 const initialContaminationRates = {
     // Мідь та мідні сплави
@@ -114,6 +117,9 @@ export default function App() {
 
     const initialItemsRef = useRef([]);
     const [invoicesLoaded, setInvoicesLoaded] = useState(false);
+    const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+    const [adminPassword, setAdminPassword] = useState("");
+    const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
 
     // Функція для округлення ціни з урахуванням типу металу
     const roundPrice = (price, metalName) => {
@@ -2198,7 +2204,7 @@ ${receiptText}
                     </button>
 
                     <button
-                        onClick={() => setShowAdminPanel(true)}
+                        onClick={() => setShowPasswordPrompt(true)}
                         style={{
                             padding: "10px 20px",
                             backgroundColor: "#ffc107",
@@ -2215,6 +2221,123 @@ ${receiptText}
                     >
                         ⚙️ Адмін-панель
                     </button>
+
+                    {/* Модальне вікно для введення пароля */}
+                    {showPasswordPrompt && (
+                        <div style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            zIndex: 2000
+                        }}>
+                            <div style={{
+                                backgroundColor: '#2d2d2d',
+                                padding: '30px',
+                                borderRadius: '12px',
+                                width: '400px',
+                                maxWidth: '90%',
+                                border: '2px solid #404040'
+                            }}>
+                                <h3 style={{
+                                    color: '#ffffff',
+                                    marginBottom: '20px',
+                                    fontSize: '1.3rem',
+                                    textAlign: 'center'
+                                }}>
+                                    🔐 Введіть пароль
+                                </h3>
+
+                                <input
+                                    type="password"
+                                    value={adminPassword}
+                                    onChange={(e) => setAdminPassword(e.target.value)}
+                                    onKeyPress={(e) => {
+                                        if (e.key === 'Enter') {
+                                            if (adminPassword === ADMIN_PASSWORD) {
+                                                setIsAdminAuthenticated(true);
+                                                setShowAdminPanel(true);
+                                                setShowPasswordPrompt(false);
+                                                setAdminPassword("");
+                                            } else {
+                                                alert("❌ Невірний пароль!");
+                                                setAdminPassword("");
+                                            }
+                                        }
+                                    }}
+                                    placeholder="Введіть пароль"
+                                    autoFocus
+                                    style={{
+                                        width: '375px',
+                                        padding: '12px',
+                                        marginBottom: '20px',
+                                        border: '1px solid #555',
+                                        borderRadius: '6px',
+                                        fontSize: '16px',
+                                        backgroundColor: '#333',
+                                        color: '#fff',
+                                        outline: 'none'
+                                    }}
+                                />
+
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '10px',
+                                    justifyContent: 'center'
+                                }}>
+                                    <button
+                                        onClick={() => {
+                                            if (adminPassword === ADMIN_PASSWORD) {
+                                                setIsAdminAuthenticated(true);
+                                                setShowAdminPanel(true);
+                                                setShowPasswordPrompt(false);
+                                                setAdminPassword("");
+                                            } else {
+                                                alert("❌ Невірний пароль!");
+                                                setAdminPassword("");
+                                            }
+                                        }}
+                                        style={{
+                                            padding: "10px 25px",
+                                            backgroundColor: '#28a745',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            fontSize: '15px',
+                                            fontWeight: '500'
+                                        }}
+                                    >
+                                        Увійти
+                                    </button>
+
+                                    <button
+                                        onClick={() => {
+                                            setShowPasswordPrompt(false);
+                                            setAdminPassword("");
+                                        }}
+                                        style={{
+                                            padding: "10px 25px",
+                                            backgroundColor: '#dc3545',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            fontSize: '15px',
+                                            fontWeight: '500'
+                                        }}
+                                    >
+                                        Скасувати
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <button
                         onClick={deleteAllInvoices}
@@ -2979,7 +3102,7 @@ ${receiptText}
             </div>
 
             {/* Адмін панель для зміни цін та засмічення */}
-            {showAdminPanel && (
+            {showAdminPanel && isAdminAuthenticated && (
                 <div style={{
                     position: 'fixed',
                     top: 0,
@@ -3027,7 +3150,10 @@ ${receiptText}
                                 ⚙️ Адмін-панель - Зміна цін та засмічення
                             </h3>
                             <button
-                                onClick={() => setShowAdminPanel(false)}
+                                onClick={() => {
+                                    setShowAdminPanel(false);
+                                    setIsAdminAuthenticated(false); // Скидаємо авторизацію
+                                }}
                                 style={{
                                     padding: '10px 20px',
                                     backgroundColor: '#dc3545',

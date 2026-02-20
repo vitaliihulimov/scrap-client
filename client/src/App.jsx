@@ -51,7 +51,7 @@ const initialContaminationRates = {
     "Нержавейка (8% нікелю)": 0.5,
     "Нержавейка (0% нікелю)": 0.5,
     "Височка скрап": 1,
-    "Нержавіюча стружка 10%": 0.5,  // Розділено на три позиції
+    "Нержавіюча стружка 10%": 0.5,
     "Нержавіюча стружка 9%": 0.5,
     "Нержавіюча стружка 8%": 0.5,
     "Нержавіючий скрап": 1,
@@ -77,7 +77,7 @@ const initialContaminationRates = {
     "Титан": 0.5,
 
     // Сплави
-    "Бабіт (16)": 1,    // Додано нові метали
+    "Бабіт (16)": 1,
     "Бабіт (82)": 1,
     "Кремній": 1,
     "Мельхіор": 1,
@@ -86,7 +86,7 @@ const initialContaminationRates = {
     "Припой": 0,
 
     // Швидкорізи та спецсплави
-    "Рапід Р6М5": 1,    // Додано нові метали
+    "Рапід Р6М5": 1,
     "Рапід Р18": 1,
     "Вольфрам": 0.5,
     "Молібден": 0.5,
@@ -94,7 +94,7 @@ const initialContaminationRates = {
     "Ферованадій": 1,
 
     // Чорний метал
-    "Чорний метал": 0.5  // Додано чорний метал
+    "Чорний метал": 0.5
 };
 
 export default function App() {
@@ -121,44 +121,26 @@ export default function App() {
     const [adminPassword, setAdminPassword] = useState("");
     const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
 
-    // Функція для округлення ціни з урахуванням типу металу
-    const roundPrice = (price, metalName) => {
-        if (metalName === "Чорний метал") {
-            // Округлення до 1 десяткового знаку для чорного металу
-            return Math.round(price * 10) / 10;
-        } else {
-            // Округлення до цілого числа для всіх інших
-            return Math.round(price);
-        }
+    // Функція для округлення ваги з засміченням до десятих
+    const roundWeightWithContamination = (weight, contaminationRate) => {
+        if (!weight || weight <= 0) return 0;
+        const cleanWeight = weight * (1 - contaminationRate / 100);
+        // Округлення до 1 десяткового знаку
+        return Math.round(cleanWeight * 10) / 10;
     };
 
-    // Функція для округлення ціни вниз (до меншого цілого) з урахуванням типу металу
-    const roundPriceDown = (price, metalName) => {
-        if (metalName === "Чорний метал") {
-            // Для чорного металу округлення до 1 десяткового знаку вниз
-            return Math.floor(price * 10) / 10;
-        } else {
-            // Для всіх інших металів округлення вниз до цілого числа
-            return Math.floor(price);
-        }
-    };
-
-    // Функція для розрахунку ціни з урахуванням засмічення
-    const calculatePriceWithContamination = (metalName, originalPrice, customRate = null) => {
-        const rate = customRate !== null ? customRate : (contaminationRates[metalName] || 0);
-
-        // Розрахунок ціни після засмічення
-        const priceAfterContamination = originalPrice * (1 - rate / 100);
-
-        // Округлення вниз згідно з правилами
-        return roundPriceDown(priceAfterContamination, metalName);
-    };
-
-    // Функція для розрахунку суми (вага * ціна з засміченням)
+    // Функція для розрахунку суми (вага з засміченням * ціна)
     const calculateSum = (weight, price, metalName, contaminationRate) => {
         if (!weight || weight <= 0) return 0;
-        const priceWithCont = calculatePriceWithContamination(metalName, price, contaminationRate);
-        return Math.floor(weight * priceWithCont);
+        const weightWithCont = roundWeightWithContamination(weight, contaminationRate);
+
+        // Для чорного металу ціна вже з одним десятковим знаком
+        if (metalName === "Чорний метал") {
+            return Math.floor(weightWithCont * price * 10) / 10;
+        } else {
+            // Для всіх інших - округлення до цілого числа
+            return Math.floor(weightWithCont * price);
+        }
     };
 
     // Функція для скорочення назв металів
@@ -300,7 +282,7 @@ export default function App() {
         { id: 32, name: "Нержавейка (8% нікелю)", price: 26, weight: "", initialPrice: 80 },
         { id: 33, name: "Нержавейка (0% нікелю)", price: 6, weight: "", initialPrice: 45 },
         { id: 34, name: "Височка скрап", price: 10, weight: "", initialPrice: 70 },
-        { id: 35, name: "Нержавіюча стружка (10%)", price: 20, weight: "", initialPrice: 60 },  // Розділено на три
+        { id: 35, name: "Нержавіюча стружка (10%)", price: 20, weight: "", initialPrice: 60 },
         { id: 36, name: "Нержавіюча стружка (9%)", price: 10, weight: "", initialPrice: 60 },
         { id: 37, name: "Нержавіюча стружка (8%)", price: 11, weight: "", initialPrice: 60 },
         { id: 38, name: "Нержавіючий скрап", price: 10, weight: "", initialPrice: 65 },
@@ -498,22 +480,22 @@ export default function App() {
                             const processedItems = inv.items.map(item => {
                                 const rate = item.contaminationRate || (savedRates ? savedRates[item.name] : 0) || 0;
 
-                                // Розраховуємо правильну ціну з засміченням
-                                let priceWithCont;
-                                if (item.name === "Чорний метал") {
-                                    priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
-                                } else {
-                                    priceWithCont = Math.floor(item.price * (1 - rate / 100));
-                                }
+                                // Розраховуємо правильну вагу з засміченням
+                                const weight = Number(item.weight) || 0;
+                                const weightWithCont = roundWeightWithContamination(weight, rate);
 
                                 // Розраховуємо правильну суму
-                                const weight = Number(item.weight) || 0;
-                                const correctSum = Math.floor(weight * priceWithCont);
+                                let correctSum;
+                                if (item.name === "Чорний метал") {
+                                    correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
+                                } else {
+                                    correctSum = Math.floor(weightWithCont * item.price);
+                                }
 
                                 return {
                                     ...item,
                                     contaminationRate: rate,
-                                    priceWithContamination: priceWithCont,
+                                    weightWithContamination: weightWithCont,
                                     sum: correctSum
                                 };
                             });
@@ -541,22 +523,22 @@ export default function App() {
                                 const processedItems = inv.items.map(item => {
                                     const rate = item.contaminationRate || (savedRates ? savedRates[item.name] : 0) || 0;
 
-                                    // Розраховуємо правильну ціну з засміченням
-                                    let priceWithCont;
-                                    if (item.name === "Чорний метал") {
-                                        priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
-                                    } else {
-                                        priceWithCont = Math.floor(item.price * (1 - rate / 100));
-                                    }
+                                    // Розраховуємо правильну вагу з засміченням
+                                    const weight = Number(item.weight) || 0;
+                                    const weightWithCont = roundWeightWithContamination(weight, rate);
 
                                     // Розраховуємо правильну суму
-                                    const weight = Number(item.weight) || 0;
-                                    const correctSum = Math.floor(weight * priceWithCont);
+                                    let correctSum;
+                                    if (item.name === "Чорний метал") {
+                                        correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
+                                    } else {
+                                        correctSum = Math.floor(weightWithCont * item.price);
+                                    }
 
                                     return {
                                         ...item,
                                         contaminationRate: rate,
-                                        priceWithContamination: priceWithCont,
+                                        weightWithContamination: weightWithCont,
                                         sum: correctSum
                                     };
                                 });
@@ -588,22 +570,22 @@ export default function App() {
                             const processedItems = inv.items.map(item => {
                                 const rate = item.contaminationRate || (savedRates ? savedRates[item.name] : 0) || 0;
 
-                                // Розраховуємо правильну ціну з засміченням
-                                let priceWithCont;
-                                if (item.name === "Чорний метал") {
-                                    priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
-                                } else {
-                                    priceWithCont = Math.floor(item.price * (1 - rate / 100));
-                                }
+                                // Розраховуємо правильну вагу з засміченням
+                                const weight = Number(item.weight) || 0;
+                                const weightWithCont = roundWeightWithContamination(weight, rate);
 
                                 // Розраховуємо правильну суму
-                                const weight = Number(item.weight) || 0;
-                                const correctSum = Math.floor(weight * priceWithCont);
+                                let correctSum;
+                                if (item.name === "Чорний метал") {
+                                    correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
+                                } else {
+                                    correctSum = Math.floor(weightWithCont * item.price);
+                                }
 
                                 return {
                                     ...item,
                                     contaminationRate: rate,
-                                    priceWithContamination: priceWithCont,
+                                    weightWithContamination: weightWithCont,
                                     sum: correctSum
                                 };
                             });
@@ -624,7 +606,7 @@ export default function App() {
                     }
                 }
 
-                // 3. 👇 НОВЕ: Завантажуємо актуальні відсотки засмічення з сервера
+                // 3. Завантажуємо актуальні відсотки засмічення з сервера
                 try {
                     const contRes = await fetch(`${API_BASE_URL}/contamination`);
                     if (contRes.ok) {
@@ -683,22 +665,22 @@ export default function App() {
                         const processedItems = inv.items.map(item => {
                             const rate = item.contaminationRate || (savedRates ? savedRates[item.name] : 0) || 0;
 
-                            // Розраховуємо правильну ціну з засміченням
-                            let priceWithCont;
-                            if (item.name === "Чорний метал") {
-                                priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
-                            } else {
-                                priceWithCont = Math.floor(item.price * (1 - rate / 100));
-                            }
+                            // Розраховуємо правильну вагу з засміченням
+                            const weight = Number(item.weight) || 0;
+                            const weightWithCont = roundWeightWithContamination(weight, rate);
 
                             // Розраховуємо правильну суму
-                            const weight = Number(item.weight) || 0;
-                            const correctSum = Math.floor(weight * priceWithCont);
+                            let correctSum;
+                            if (item.name === "Чорний метал") {
+                                correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
+                            } else {
+                                correctSum = Math.floor(weightWithCont * item.price);
+                            }
 
                             return {
                                 ...item,
                                 contaminationRate: rate,
-                                priceWithContamination: priceWithCont,
+                                weightWithContamination: weightWithCont,
                                 sum: correctSum
                             };
                         });
@@ -718,7 +700,7 @@ export default function App() {
                     setInvoices([]);
                 }
 
-                // 👇 І в блоці помилок теж пробуємо завантажити засмічення з сервера
+                // І в блоці помилок теж пробуємо завантажити засмічення з сервера
                 try {
                     const contRes = await fetch(`${API_BASE_URL}/contamination`);
                     if (contRes.ok) {
@@ -764,22 +746,22 @@ export default function App() {
                     const processedItems = inv.items.map(item => {
                         const rate = item.contaminationRate || contaminationRates[item.name] || 0;
 
-                        // Розраховуємо правильну ціну з засміченням
-                        let priceWithCont;
-                        if (item.name === "Чорний метал") {
-                            priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
-                        } else {
-                            priceWithCont = Math.floor(item.price * (1 - rate / 100));
-                        }
+                        // Розраховуємо правильну вагу з засміченням
+                        const weight = Number(item.weight) || 0;
+                        const weightWithCont = roundWeightWithContamination(weight, rate);
 
                         // Розраховуємо правильну суму
-                        const weight = Number(item.weight) || 0;
-                        const correctSum = Math.floor(weight * priceWithCont);
+                        let correctSum;
+                        if (item.name === "Чорний метал") {
+                            correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
+                        } else {
+                            correctSum = Math.floor(weightWithCont * item.price);
+                        }
 
                         return {
                             ...item,
                             contaminationRate: rate,
-                            priceWithContamination: priceWithCont,
+                            weightWithContamination: weightWithCont,
                             sum: correctSum
                         };
                     });
@@ -1250,25 +1232,26 @@ export default function App() {
                     ? item.tempContamination
                     : (contaminationRates[item.name] || 0);
 
-                // Розраховуємо ціну з засміченням з округленням вниз
-                const priceAfterCont = item.price * (1 - rate / 100);
-                let priceWithCont;
-                if (item.name === "Чорний метал") {
-                    priceWithCont = Math.floor(priceAfterCont * 10) / 10;
-                } else {
-                    priceWithCont = Math.floor(priceAfterCont);
-                }
-
                 const weight = Number(item.weight);
-                const sum = Math.floor(weight * priceWithCont);
+
+                // Розраховуємо вагу з засміченням (округляємо до 1 десяткового знаку)
+                const weightWithCont = roundWeightWithContamination(weight, rate);
+
+                // Розраховуємо суму
+                let sum;
+                if (item.name === "Чорний метал") {
+                    sum = Math.floor(weightWithCont * item.price * 10) / 10;
+                } else {
+                    sum = Math.floor(weightWithCont * item.price);
+                }
 
                 return {
                     id: item.id,
                     name: item.name,
                     price: item.price,
-                    priceWithContamination: priceWithCont,
-                    contaminationRate: rate, // Зберігаємо ВИКОРИСТАНЕ засмічення
                     weight: weight,
+                    weightWithContamination: weightWithCont,
+                    contaminationRate: rate, // Зберігаємо ВИКОРИСТАНЕ засмічення
                     sum: sum
                 };
             });
@@ -1390,14 +1373,14 @@ export default function App() {
             allMetals[metal.name] = {
                 name: metal.name,
                 totalWeight: 0,
+                totalWeightWithCont: 0,
                 totalAmount: 0,
                 averagePrice: 0,
                 transactions: [],
                 price: metal.price,
                 id: metal.id,
                 hasTransactions: false,
-                contaminationRate: contaminationRates[metal.name] || 0,
-                priceWithContamination: calculatePriceWithContamination(metal.name, metal.price)
+                contaminationRate: contaminationRates[metal.name] || 0
             };
         });
 
@@ -1408,15 +1391,17 @@ export default function App() {
             invoice.items.forEach(item => {
                 if (allMetals[item.name]) {
                     const weight = Number(item.weight) || 0;
+                    const weightWithCont = item.weightWithContamination || roundWeightWithContamination(weight, item.contaminationRate || 0);
                     const amount = item.sum || 0;
 
                     allMetals[item.name].totalWeight += weight;
+                    allMetals[item.name].totalWeightWithCont += weightWithCont;
                     allMetals[item.name].totalAmount += amount;
                     allMetals[item.name].hasTransactions = true;
                     allMetals[item.name].transactions.push({
                         weight: weight,
+                        weightWithCont: weightWithCont,
                         price: item.price,
-                        priceWithContamination: item.priceWithContamination || calculatePriceWithContamination(item.name, item.price, item.contaminationRate),
                         contaminationRate: item.contaminationRate || 0,
                         amount: amount
                     });
@@ -1429,8 +1414,8 @@ export default function App() {
         // Розраховуємо середню ціну для металів з транзакціями
         Object.keys(allMetals).forEach(metalName => {
             const metal = allMetals[metalName];
-            if (metal.totalWeight > 0) {
-                metal.averagePrice = Math.round((metal.totalAmount / metal.totalWeight) * 100) / 100;
+            if (metal.totalWeightWithCont > 0) {
+                metal.averagePrice = Math.round((metal.totalAmount / metal.totalWeightWithCont) * 100) / 100;
             }
         });
 
@@ -1669,12 +1654,12 @@ export default function App() {
                         <tr>
                             <th width="4%">№</th>
                             <th width="25%">Найменування металу</th>
-                            <th width="6%">Засм.%</th>
-                            <th width="8%">Ціна (грн)</th>
-                            <th width="8%">Ціна з засм.</th>
+                            <th width="5%">Засм.%</th>
+                            <th width="7%">Ціна (грн)</th>
                             <th width="8%">Вага (кг)</th>
+                            <th width="8%">Вага з засм.</th>
                             <th width="8%">Сума (грн)</th>
-                            <th width="8%">К-сть</th>
+                            <th width="5%">К-сть</th>
                             <th width="10%">Середня ціна</th>
                         </tr>
                     </thead>
@@ -1685,8 +1670,8 @@ export default function App() {
                                 <td><strong>${metal.name}</strong></td>
                                 <td class="text-center">${metal.contaminationRate}%</td>
                                 <td class="number-cell">${metal.price}</td>
-                                <td class="number-cell">${metal.priceWithContamination}</td>
                                 <td class="number-cell">${metal.totalWeight.toFixed(2)}</td>
+                                <td class="number-cell">${metal.totalWeightWithCont.toFixed(2)}</td>
                                 <td class="number-cell"><strong>${metal.totalAmount.toLocaleString('uk-UA')}</strong></td>
                                 <td class="text-center">${metal.transactions.length}</td>
                                 <td class="number-cell"><strong>${metal.averagePrice.toFixed(2)}</strong></td>
@@ -1694,8 +1679,9 @@ export default function App() {
                         `).join('')}
                         
                         <tr class="total-row">
-                            <td colspan="5" class="text-right"><strong>РАЗОМ:</strong></td>
+                            <td colspan="4" class="text-right"><strong>РАЗОМ:</strong></td>
                             <td class="number-cell"><strong>${metalsWithTransactions.reduce((sum, m) => sum + m.totalWeight, 0).toFixed(2)}</strong></td>
+                            <td class="number-cell"><strong>${metalsWithTransactions.reduce((sum, m) => sum + m.totalWeightWithCont, 0).toFixed(2)}</strong></td>
                             <td class="number-cell"><strong>${totalDayAmount.toLocaleString('uk-UA')}</strong></td>
                             <td class="text-center"><strong>${metalsWithTransactions.reduce((sum, m) => sum + m.transactions.length, 0)}</strong></td>
                             <td class="number-cell"><strong>-</strong></td>
@@ -1741,6 +1727,7 @@ export default function App() {
         printWindow.document.close();
     };
 
+    // Оновлена функція форматування чеку
     const formatReceiptForPrinter = (invoice) => {
         if (!invoice || !invoice.items) {
             return "Помилка: немає даних для друку";
@@ -1763,50 +1750,44 @@ export default function App() {
 
         receipt += "-".repeat(maxWidth) + "\n";
 
-        receipt += "МЕТАЛ       ЗАСМ ЦІНА ЦЗ  ВАГА    СУМА\n";
+        // Максимально компактний заголовок
+        receipt += "МЕТАЛ  ЗАСМ  ЦІНА ВАГА  ВАГЗ  СУМА\n";
         receipt += "-".repeat(maxWidth) + "\n";
 
         invoice.items.forEach(item => {
-
-            // Використовуємо скорочену назву
+            // Скорочуємо назву до 6 символів
             let name = shortenMetalName(item.name || "Метал");
-
-            // Забезпечуємо фіксовану ширину (10 символів для кращої читабельності)
-            if (name.length > 10) {
-                name = name.substring(0, 10);
+            if (name.length > 6) {
+                name = name.substring(0, 6);
             }
-            name = name.padEnd(10, ' ');
+            name = name.padEnd(6, ' ');
 
             // Отримуємо відсоток засмічення
             const rate = item.contaminationRate || 0;
 
-            // Отримуємо ціну з засміченням
-            const priceWithCont = item.priceWithContamination || item.price;
+            // Мінімальні відступи
+            const rateStr = rate.toString().padStart(3, ' ') + '%';  // " 0.5%"
+            const priceStr = (item.price || 0).toString().padStart(4, ' ');  // "  26"
+            const weightStr = (Number(item.weight) || 0).toFixed(2).padStart(5, ' ');  // "3495.00"
+            const weightWithContStr = (item.weightWithContamination || 0).toFixed(2).padStart(5, ' ');  // "3477.50"
+            const sumStr = (item.sum || 0).toString().padStart(5, ' ');  // "90415"
 
-            const rateStr = rate.toString().padStart(2, ' ') + '%';
-            const priceStr = (item.price || 0).toString().padStart(4, ' ');
-            const priceWithContStr = priceWithCont.toString().padStart(4, ' ');
-            const weightStr = (Number(item.weight) || 0).toFixed(2).padStart(6, ' ');
-            const sumStr = (item.sum || 0).toString().padStart(7, ' ');
-
-            receipt += `${name} ${rateStr} ${priceStr} ${priceWithContStr} ${weightStr} ${sumStr}\n`;
+            receipt += `${name} ${rateStr} ${priceStr} ${weightStr} ${weightWithContStr} ${sumStr}\n`;
         });
 
         receipt += "=".repeat(maxWidth) + "\n";
 
         const totalText = "РАЗОМ:";
         const totalAmount = `${invoice.total || 0} грн`;
-        const totalLine = totalText.padEnd(10) + totalAmount.padStart(27);
+        const totalLine = totalText.padEnd(8) + totalAmount.padStart(29);
         receipt += totalLine + "\n";
 
         receipt += "=".repeat(maxWidth) + "\n";
 
         receipt += "\n";
-        receipt += "Підпис клієнта: ___________\n";
-        receipt += "Підпис продавця: ___________\n";
+        receipt += "Підпис:___________\n";
         receipt += "\n";
         receipt += "Дякуємо!\n";
-        receipt += "\n\n\n";
 
         return receipt;
     };
@@ -1822,22 +1803,22 @@ export default function App() {
         const itemsWithCorrectData = invoice.items.map(item => {
             const rate = item.contaminationRate || contaminationRates[item.name] || 0;
 
-            // Розраховуємо правильну ціну з засміченням
-            let priceWithCont;
-            if (item.name === "Чорний метал") {
-                priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
-            } else {
-                priceWithCont = Math.floor(item.price * (1 - rate / 100));
-            }
+            // Розраховуємо правильну вагу з засміченням
+            const weight = Number(item.weight) || 0;
+            const weightWithCont = roundWeightWithContamination(weight, rate);
 
             // Розраховуємо правильну суму
-            const weight = Number(item.weight) || 0;
-            const correctSum = Math.floor(weight * priceWithCont);
+            let correctSum;
+            if (item.name === "Чорний метал") {
+                correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
+            } else {
+                correctSum = Math.floor(weightWithCont * item.price);
+            }
 
             return {
                 ...item,
                 contaminationRate: rate,
-                priceWithContamination: priceWithCont,
+                weightWithContamination: weightWithCont,
                 sum: correctSum
             };
         });
@@ -1870,22 +1851,22 @@ export default function App() {
         const itemsWithCorrectData = invoice.items.map(item => {
             const rate = item.contaminationRate || contaminationRates[item.name] || 0;
 
-            // Розраховуємо правильну ціну з засміченням
-            let priceWithCont;
-            if (item.name === "Чорний метал") {
-                priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
-            } else {
-                priceWithCont = Math.floor(item.price * (1 - rate / 100));
-            }
+            // Розраховуємо правильну вагу з засміченням
+            const weight = Number(item.weight) || 0;
+            const weightWithCont = roundWeightWithContamination(weight, rate);
 
             // Розраховуємо правильну суму
-            const weight = Number(item.weight) || 0;
-            const correctSum = Math.floor(weight * priceWithCont);
+            let correctSum;
+            if (item.name === "Чорний метал") {
+                correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
+            } else {
+                correctSum = Math.floor(weightWithCont * item.price);
+            }
 
             return {
                 ...item,
                 contaminationRate: rate,
-                priceWithContamination: priceWithCont,
+                weightWithContamination: weightWithCont,
                 sum: correctSum
             };
         });
@@ -2054,22 +2035,22 @@ ${receiptText}
         const itemsWithCorrectData = invoice.items.map(item => {
             const rate = item.contaminationRate || contaminationRates[item.name] || 0;
 
-            // Розраховуємо правильну ціну з засміченням
-            let priceWithCont;
-            if (item.name === "Чорний метал") {
-                priceWithCont = Math.floor(item.price * (1 - rate / 100) * 10) / 10;
-            } else {
-                priceWithCont = Math.floor(item.price * (1 - rate / 100));
-            }
+            // Розраховуємо правильну вагу з засміченням
+            const weight = Number(item.weight) || 0;
+            const weightWithCont = roundWeightWithContamination(weight, rate);
 
             // Розраховуємо правильну суму
-            const weight = Number(item.weight) || 0;
-            const correctSum = Math.floor(weight * priceWithCont);
+            let correctSum;
+            if (item.name === "Чорний метал") {
+                correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
+            } else {
+                correctSum = Math.floor(weightWithCont * item.price);
+            }
 
             return {
                 ...item,
                 contaminationRate: rate,
-                priceWithContamination: priceWithCont,
+                weightWithContamination: weightWithCont,
                 sum: correctSum
             };
         });
@@ -2471,15 +2452,15 @@ ${receiptText}
                         <p><strong>Звіт включатиме:</strong></p>
                         <ul style={{ margin: '10px 0 0 20px' }}>
                             <li>Загальну кількість накладних за обраний день</li>
-                            <li>Детальну статистику по кожному металу (вага, середня ціна, сума)</li>
+                            <li>Детальну статистику по кожному металу (вага, вага з засміченням, середня ціна, сума)</li>
                             <li>Загальну суму витрат за день</li>
                             <li>Кількість транзакцій по кожному металу</li>
-                            <li>Відсотки засмічення та ціни з урахуванням засмічення</li>
+                            <li>Відсотки засмічення</li>
                         </ul>
                     </div>
                 </div>
 
-                {/* Форма для нової накладної */}
+                {/* Форма для нової накладної - ОНОВЛЕНО */}
                 <div style={{
                     backgroundColor: '#2d2d2d',
                     padding: '25px',
@@ -2527,13 +2508,6 @@ ${receiptText}
                                         borderBottom: '2px solid #404040',
                                         color: '#ffffff',
                                         fontWeight: '600'
-                                    }}>Засмічення (%)</th>
-                                    <th style={{
-                                        padding: '15px',
-                                        textAlign: 'left',
-                                        borderBottom: '2px solid #404040',
-                                        color: '#ffffff',
-                                        fontWeight: '600'
                                     }}>Ціна / кг</th>
                                     <th style={{
                                         padding: '15px',
@@ -2541,7 +2515,7 @@ ${receiptText}
                                         borderBottom: '2px solid #404040',
                                         color: '#ffffff',
                                         fontWeight: '600'
-                                    }}>Ціна з засміченням</th>
+                                    }}>Засмічення (%)</th>
                                     <th style={{
                                         padding: '15px',
                                         textAlign: 'left',
@@ -2555,14 +2529,21 @@ ${receiptText}
                                         borderBottom: '2px solid #404040',
                                         color: '#ffffff',
                                         fontWeight: '600'
+                                    }}>Вага з засміченням</th>
+                                    <th style={{
+                                        padding: '15px',
+                                        textAlign: 'left',
+                                        borderBottom: '2px solid #404040',
+                                        color: '#ffffff',
+                                        fontWeight: '600'
                                     }}>Сума</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {items.map(i => {
                                     const currentRate = contaminationRates[i.name] || 0;
-                                    const priceWithCont = calculatePriceWithContamination(i.name, i.price, currentRate);
                                     const weight = Number(i.weight) || 0;
+                                    const weightWithCont = roundWeightWithContamination(weight, currentRate);
                                     const sum = calculateSum(weight, i.price, i.name, currentRate);
 
                                     return (
@@ -2577,6 +2558,25 @@ ${receiptText}
                                                 padding: '15px',
                                                 color: '#e0e0e0'
                                             }}>{i.name}</td>
+                                            <td style={{ padding: '15px' }}>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={i.price}
+                                                    onChange={e => updatePrice(i.id, e.target.value)}
+                                                    style={{
+                                                        width: '100px',
+                                                        padding: '10px',
+                                                        border: '1px solid #555',
+                                                        borderRadius: '6px',
+                                                        fontSize: '14px',
+                                                        backgroundColor: '#333',
+                                                        color: '#fff',
+                                                        outline: 'none'
+                                                    }}
+                                                />
+                                            </td>
                                             <td style={{ padding: '15px' }}>
                                                 <input
                                                     type="number"
@@ -2608,11 +2608,11 @@ ${receiptText}
                                             </td>
                                             <td style={{ padding: '15px' }}>
                                                 <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    min="0"
-                                                    value={i.price}
-                                                    onChange={e => updatePrice(i.id, e.target.value)}
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    placeholder="0.0"
+                                                    value={i.weight}
+                                                    onChange={e => updateWeight(i.id, e.target.value)}
                                                     style={{
                                                         width: '100px',
                                                         padding: '10px',
@@ -2631,26 +2631,7 @@ ${receiptText}
                                                 fontWeight: 'bold',
                                                 fontSize: '16px'
                                             }}>
-                                                {priceWithCont} грн
-                                            </td>
-                                            <td style={{ padding: '15px' }}>
-                                                <input
-                                                    type="text"
-                                                    inputMode="decimal"
-                                                    placeholder="0.0"
-                                                    value={i.weight}
-                                                    onChange={e => updateWeight(i.id, e.target.value)}
-                                                    style={{
-                                                        width: '100px',
-                                                        padding: '10px',
-                                                        border: '1px solid #555',
-                                                        borderRadius: '6px',
-                                                        fontSize: '14px',
-                                                        backgroundColor: '#333',
-                                                        color: '#fff',
-                                                        outline: 'none'
-                                                    }}
-                                                />
+                                                {weightWithCont.toFixed(2)} кг
                                             </td>
                                             <td style={{
                                                 padding: '15px',
@@ -2854,6 +2835,7 @@ ${receiptText}
                                             <th style={{
                                                 padding: '15px',
                                                 textAlign: 'left',
+                                                borderBottom: '2px solid #404040',
                                                 borderBottom: '2px solid #404040',
                                                 color: '#ffffff',
                                                 fontWeight: '600'
@@ -3152,7 +3134,7 @@ ${receiptText}
                             <button
                                 onClick={() => {
                                     setShowAdminPanel(false);
-                                    setIsAdminAuthenticated(false); // Скидаємо авторизацію
+                                    setIsAdminAuthenticated(false);
                                 }}
                                 style={{
                                     padding: '10px 20px',
@@ -3256,7 +3238,7 @@ ${receiptText}
                                                 borderBottom: '2px solid #404040',
                                                 color: '#ffffff',
                                                 fontWeight: '600'
-                                            }}>Ціна з засміченням</th>
+                                            }}>Приклад ваги з засм.</th>
                                             <th style={{
                                                 padding: '15px',
                                                 textAlign: 'left',
@@ -3280,11 +3262,10 @@ ${receiptText}
                                             const currentRate = contaminationRates[metal.name] || 0;
                                             const tempRate = tempContamination[metal.name];
                                             const hasContaminationChanged = tempRate !== undefined && tempRate !== currentRate;
-                                            const priceWithCont = calculatePriceWithContamination(
-                                                metal.name,
-                                                metal.price,
-                                                tempRate !== undefined ? tempRate : currentRate
-                                            );
+
+                                            // Приклад ваги з засміченням (для 100 кг)
+                                            const exampleWeight = 100;
+                                            const exampleWeightWithCont = roundWeightWithContamination(exampleWeight, tempRate !== undefined ? tempRate : currentRate);
 
                                             return (
                                                 <tr key={metal.id} style={{
@@ -3312,7 +3293,6 @@ ${receiptText}
                                                             value={tempRate !== undefined ? tempRate : currentRate}
                                                             onChange={(e) => {
                                                                 const newRate = parseFloat(e.target.value) || 0;
-                                                                // ТІЛЬКИ тут змінюємо глобальне засмічення
                                                                 updateTempContamination(metal.name, newRate);
                                                             }}
                                                             style={{
@@ -3351,7 +3331,7 @@ ${receiptText}
                                                         fontWeight: 'bold',
                                                         fontSize: '16px'
                                                     }}>
-                                                        {priceWithCont} грн
+                                                        100 кг → {exampleWeightWithCont.toFixed(2)} кг
                                                     </td>
                                                     <td style={{ padding: '15px' }}>
                                                         <input
@@ -3495,7 +3475,7 @@ ${receiptText}
                                         transition: 'all 0.3s'
                                     }}
                                     onMouseOver={(e) => {
-                                        if (!isSavingPrice && Object.keys(tempPrices).length > 0) e.target.style.BackgroundColor = '#138496';
+                                        if (!isSavingPrice && Object.keys(tempPrices).length > 0) e.target.style.backgroundColor = '#138496';
                                     }}
                                     onMouseOut={(e) => {
                                         if (!isSavingPrice && Object.keys(tempPrices).length > 0) e.target.style.backgroundColor = '#17a2b8';

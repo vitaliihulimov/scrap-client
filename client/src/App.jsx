@@ -121,12 +121,12 @@ export default function App() {
     const [adminPassword, setAdminPassword] = useState("");
     const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
 
-    // Функція для округлення ваги з засміченням до десятих
+    // Функція для округлення ваги з засміченням ВНИЗ до десятих
     const roundWeightWithContamination = (weight, contaminationRate) => {
         if (!weight || weight <= 0) return 0;
         const cleanWeight = weight * (1 - contaminationRate / 100);
-        // Округлення до 1 десяткового знаку
-        return Math.round(cleanWeight * 10) / 10;
+        // Відсікаємо до 1 десяткового знаку (округлення вниз)
+        return Math.floor(cleanWeight * 10) / 10;
     };
 
     // Функція для розрахунку суми (вага з засміченням * ціна)
@@ -134,13 +134,8 @@ export default function App() {
         if (!weight || weight <= 0) return 0;
         const weightWithCont = roundWeightWithContamination(weight, contaminationRate);
 
-        // Для чорного металу ціна вже з одним десятковим знаком
-        if (metalName === "Чорний метал") {
-            return Math.floor(weightWithCont * price * 10) / 10;
-        } else {
-            // Для всіх інших - округлення до цілого числа
-            return Math.floor(weightWithCont * price);
-        }
+        // Для всіх металів округлення до цілого числа вниз
+        return Math.floor(weightWithCont * price);
     };
 
     // Функція для скорочення назв металів

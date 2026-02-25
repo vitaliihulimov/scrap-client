@@ -134,7 +134,12 @@ export default function App() {
         if (!weight || weight <= 0) return 0;
         const weightWithCont = roundWeightWithContamination(weight, contaminationRate);
 
-        // Для всіх металів округлення до цілого числа вниз
+        // Для чорного металу - відкидаємо копійки (залишаємо цілі числа)
+        if (metalName === "Чорний метал") {
+            return Math.floor(weightWithCont * price);
+        }
+
+        // Для всіх інших металів округлення до цілого числа вниз
         return Math.floor(weightWithCont * price);
     };
 
@@ -1722,7 +1727,7 @@ export default function App() {
         printWindow.document.close();
     };
 
-    // Оновлена функція форматування чеку
+    // Функція для форматування чеку
     const formatReceiptForPrinter = (invoice) => {
         if (!invoice || !invoice.items) {
             return "Помилка: немає даних для друку";
@@ -1760,20 +1765,32 @@ export default function App() {
             // Отримуємо відсоток засмічення
             const rate = item.contaminationRate || 0;
 
-            // Мінімальні відступи
-            const rateStr = rate.toString().padStart(3, ' ') + '%';  // " 0.5%"
-            const priceStr = (item.price || 0).toString().padStart(4, ' ');  // "  26"
-            const weightStr = (Number(item.weight) || 0).toFixed(2).padStart(5, ' ');  // "3495.00"
-            const weightWithContStr = (item.weightWithContamination || 0).toFixed(2).padStart(5, ' ');  // "3477.50"
-            const sumStr = (item.sum || 0).toString().padStart(5, ' ');  // "90415"
+            // Отримуємо ціну
+            const price = item.price || 0;
 
-            receipt += `${name} ${rateStr} ${priceStr} ${weightStr} ${weightWithContStr} ${sumStr}\n`;
+            // Для чорного металу - ціна має бути цілим числом
+            const priceStr = item.name === "Чорний метал"
+                ? Math.floor(price).toString().padStart(4, ' ')
+                : price.toString().padStart(4, ' ');
+
+            const weightStr = (Number(item.weight) || 0).toFixed(2).padStart(5, ' ');
+            const weightWithContStr = (item.weightWithContamination || 0).toFixed(2).padStart(5, ' ');
+
+            // Для чорного металу - сума має бути цілим числом
+            let sumDisplay = item.sum || 0;
+            if (item.name === "Чорний метал") {
+                sumDisplay = Math.floor(sumDisplay);
+            }
+            const sumStr = sumDisplay.toString().padStart(5, ' ');
+
+            receipt += `${name} ${rate.toString().padStart(3, ' ')}% ${priceStr} ${weightStr} ${weightWithContStr} ${sumStr}\n`;
         });
 
         receipt += "=".repeat(maxWidth) + "\n";
 
+        // Загальна сума також має бути цілим числом для чорного металу (але це загальна сума всіх металів)
         const totalText = "РАЗОМ:";
-        const totalAmount = `${invoice.total || 0} грн`;
+        const totalAmount = `${Math.floor(invoice.total || 0)} грн`;
         const totalLine = totalText.padEnd(8) + totalAmount.padStart(29);
         receipt += totalLine + "\n";
 
@@ -1805,7 +1822,7 @@ export default function App() {
             // Розраховуємо правильну суму
             let correctSum;
             if (item.name === "Чорний метал") {
-                correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
+                correctSum = Math.floor(weightWithCont * item.price);
             } else {
                 correctSum = Math.floor(weightWithCont * item.price);
             }
@@ -1853,7 +1870,7 @@ export default function App() {
             // Розраховуємо правильну суму
             let correctSum;
             if (item.name === "Чорний метал") {
-                correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
+                correctSum = Math.floor(weightWithCont * item.price);
             } else {
                 correctSum = Math.floor(weightWithCont * item.price);
             }
@@ -2037,7 +2054,7 @@ ${receiptText}
             // Розраховуємо правильну суму
             let correctSum;
             if (item.name === "Чорний метал") {
-                correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
+                correctSum = Math.floor(weightWithCont * item.price);
             } else {
                 correctSum = Math.floor(weightWithCont * item.price);
             }
@@ -2884,7 +2901,13 @@ ${receiptText}
                                                     fontWeight: 'bold',
                                                     color: '#28a745',
                                                     fontSize: '16px'
-                                                }}>{inv.total || 0} грн</td>
+                                                }}>
+                                                    {/* Перевіряємо, чи є в накладній чорний метал */}
+                                                    {inv.items && inv.items.some(item => item.name === "Чорний метал")
+                                                        ? `${Math.floor(inv.total || 0)} грн`  // Якщо є чорний метал - округлюємо
+                                                        : `${inv.total || 0} грн`              // Якщо немає - залишаємо як є
+                                                    }
+                                                </td>
                                                 <td style={{ padding: '15px', textAlign: 'center' }}>
                                                     <span style={{
                                                         display: 'inline-block',
@@ -3003,7 +3026,11 @@ ${receiptText}
                                             fontSize: '1.8rem',
                                             fontWeight: 'bold'
                                         }}>
-                                            {totalFiltered} грн
+                                            {/* Перевіряємо, чи є в накладних чорний метал */}
+                                            {filteredInvoices.some(inv => inv.items && inv.items.some(item => item.name === "Чорний метал"))
+                                                ? `${Math.floor(totalFiltered)} грн`
+                                                : `${totalFiltered} грн`
+                                            }
                                         </div>
                                     </div>
                                     <div>

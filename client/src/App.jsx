@@ -1768,20 +1768,17 @@ export default function App() {
             // Отримуємо ціну
             const price = item.price || 0;
 
-            // Для чорного металу - ціна має бути цілим числом
+            // Для чорного металу - показуємо ціну з одним десятковим знаком (5.5)
+            // Для інших металів - ціле число
             const priceStr = item.name === "Чорний метал"
-                ? Math.floor(price).toString().padStart(4, ' ')
-                : price.toString().padStart(4, ' ');
+                ? price.toFixed(1).padStart(5, ' ')   // "  5.5"
+                : Math.floor(price).toString().padStart(5, ' '); // "   26"
 
             const weightStr = (Number(item.weight) || 0).toFixed(2).padStart(5, ' ');
             const weightWithContStr = (item.weightWithContamination || 0).toFixed(2).padStart(5, ' ');
 
-            // Для чорного металу - сума має бути цілим числом
-            let sumDisplay = item.sum || 0;
-            if (item.name === "Чорний метал") {
-                sumDisplay = Math.floor(sumDisplay);
-            }
-            const sumStr = sumDisplay.toString().padStart(5, ' ');
+            // Сума (вже має бути цілим числом з calculateSum)
+            const sumStr = (item.sum || 0).toString().padStart(5, ' ');
 
             receipt += `${name} ${rate.toString().padStart(3, ' ')}% ${priceStr} ${weightStr} ${weightWithContStr} ${sumStr}\n`;
         });

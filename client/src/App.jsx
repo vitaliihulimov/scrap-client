@@ -1899,109 +1899,107 @@ export default function App() {
         <!DOCTYPE html>
         <html>
         <head>
-            <meta charset="UTF-8">
-            <title>Чек №${invoice.id}</title>
-            <style>
-                @media print {
-                    @page {
-                        size: 80mm auto;
-                        margin: 2mm !important;
-                    }
-                    
-                    body {
-                        margin: 0 !important;
-                        padding: 2mm !important;
-                        width: 76mm !important;
-                        max-width: 76mm !important;
-                        font-family: 'Courier New', Courier, monospace !important;
-                        font-size: 10pt !important;
-                        line-height: 1.2 !important;
-                        color: black !important;
-                        background: white !important;
-                        -webkit-print-color-adjust: exact !important;
-                    }
-                    
-                    .receipt-content {
-                        white-space: pre !important;
-                        word-wrap: break-word !important;
-                        overflow-wrap: break-word !important;
-                        width: 100% !important;
-                        max-width: 76mm !important;
-                        font-size: 10pt !important;
-                        line-height: 1.2 !important;
-                    }
-                    
-                    .no-print {
-                        display: none !important;
-                    }
+        <meta charset="UTF-8">
+        <title>Чек №${invoice.id}</title>
+        <style>
+            @media print {
+                @page {
+                    size: 80mm auto;
+                    margin: 2mm !important;
                 }
                 
                 body {
-                    font-family: 'Courier New', Courier, monospace;
-                    font-size: 14px;
-                    line-height: 1.4;
-                    padding: 20px;
-                    background: #f5f5f5;
-                    margin: 0;
+                    margin: 0 !important;
+                    padding: 2mm !important;
+                    width: 76mm !important;
+                    max-width: 76mm !important;
+                    font-family: 'Courier New', Courier, monospace !important;
+                    font-size: 11pt !important;        /* Збільшено з 10pt до 11pt */
+                    font-weight: 600 !important;       /* ДОДАТИ - жирніший шрифт */
+                    line-height: 1.3 !important;
+                    color: black !important;
+                    background: white !important;
+                    -webkit-print-color-adjust: exact !important;
                 }
                 
                 .receipt-content {
-                    white-space: pre;
-                    font-family: 'Courier New', Courier, monospace;
-                    font-size: 14px;
-                    line-height: 1.4;
-                    background: white;
-                    padding: 20px;
-                    border: 1px solid #ccc;
-                    border-radius: 4px;
-                    margin: 0 auto;
-                    max-width: 400px;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                    overflow-x: auto;
+                    white-space: pre !important;
+                    word-wrap: break-word !important;
+                    overflow-wrap: break-word !important;
+                    width: 100% !important;
+                    max-width: 76mm !important;
+                    font-size: 11pt !important;        /* Збільшено з 10pt до 11pt */
+                    font-weight: 600 !important;       /* ДОДАТИ - жирніший шрифт */
+                    line-height: 1.3 !important;
                 }
                 
-                .controls {
-                    text-align: center;
-                    margin: 20px 0;
-                    padding: 15px;
-                    background: white;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                .no-print {
+                    display: none !important;
                 }
-                
-                button {
-                    padding: 10px 20px;
-                    margin: 5px;
-                    font-size: 16px;
-                    cursor: pointer;
-                    background: #007bff;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    transition: background 0.3s;
-                }
-                
-                button:hover {
-                    background: #0056b3;
-                }
-                
-                .print-btn {
-                    background: #28a745;
-                }
-                
-                .print-btn:hover {
-                    background: #218838;
-                }
-                
-                .close-btn {
-                    background: #dc3545;
-                }
-                
-                .close-btn:hover {
-                    background: #c82333;
-                }
-            </style>
-        </head>
+            }
+            
+            body {
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 14px;
+                font-weight: 600;                      /* ДОДАТИ - жирніший шрифт */
+                line-height: 1.4;
+                padding: 20px;
+                background: #f5f5f5;
+                margin: 0;
+            }
+            
+            .receipt-content {
+                white-space: pre;
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 14px;
+                font-weight: 600;                      /* ДОДАТИ - жирніший шрифт */
+                line-height: 1.4;
+                background: white;
+                padding: 20px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                margin: 0 auto;
+                max-width: 400px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                overflow-x: auto;
+            }
+            
+            /* Додаткові стилі для жирності */
+            .receipt-content * {
+                font-weight: 600;                      /* ДОДАТИ - всі елементи всередині будуть жирнішими */
+            }
+            
+            /* Інші стилі залишаються без змін */
+            .controls {
+                text-align: center;
+                margin: 20px 0;
+                padding: 15px;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }
+            
+            button {
+                padding: 10px 20px;
+                margin: 5px;
+                font-size: 16px;
+                cursor: pointer;
+                background: #007bff;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                transition: background 0.3s;
+            }
+            
+            .print-btn {
+                background: #28a745;
+            }
+            
+            .close-btn {
+                background: #dc3545;
+            }
+        </style>
+    </head>
         <body>
             <div class="controls no-print">
                 <h3 style="margin: 0 0 15px 0;">Чек №${invoice.id}</h3>

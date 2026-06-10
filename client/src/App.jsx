@@ -1734,65 +1734,67 @@ export default function App() {
         }
 
         const maxWidth = 40;
-
         let receipt = "";
 
+        // Заголовок
         const title = "НАКЛАДНА";
         const titlePadding = Math.floor((maxWidth - title.length) / 2);
         receipt += " ".repeat(titlePadding) + title + "\n";
-
         receipt += "=".repeat(maxWidth) + "\n";
 
+        // Номер і дата
         receipt += `№: ${invoice.id || "---"}\n`;
         const date = invoice.created_at ? new Date(invoice.created_at) : new Date();
         receipt += `Дата: ${date.toLocaleDateString('uk-UA')}\n`;
         receipt += `Час: ${date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}\n`;
-
         receipt += "-".repeat(maxWidth) + "\n";
 
-        // Максимально компактний заголовок
-        receipt += "МЕТАЛ  ЗАСМ  ЦІНА ВАГА  ВАГЗ  СУМА\n";
+        // ЗАГОЛОВКИ - більш компактні
+        receipt += "МЕТАЛ  %  ЦІНА  ВАГА  ВАГЗ  СУМА\n";
         receipt += "-".repeat(maxWidth) + "\n";
 
+        // Дані по металах
         invoice.items.forEach(item => {
-            // Скорочуємо назву до 6 символів
+            // Скорочуємо назву до 4-5 символів
             let name = shortenMetalName(item.name || "Метал");
-            if (name.length > 6) {
-                name = name.substring(0, 6);
+            if (name.length > 5) {
+                name = name.substring(0, 5);
             }
-            name = name.padEnd(6, ' ');
+            name = name.padEnd(5, ' ');
 
-            // Отримуємо відсоток засмічення
-            const rate = item.contaminationRate || 0;
+            // Відсоток засмічення (без знака %, 3 символи)
+            const rate = (item.contaminationRate || 0).toString().padStart(3, ' ');
 
-            // Отримуємо ціну
-            const price = item.price || 0;
+            // Ціна (для чорного металу - 1 десятковий знак, для інших - ціле)
+            let priceStr;
+            if (item.name === "Чорний метал") {
+                priceStr = (item.price || 0).toFixed(1).padStart(4, ' ');
+            } else {
+                priceStr = Math.floor(item.price || 0).toString().padStart(4, ' ');
+            }
 
-            // Для чорного металу - показуємо ціну з одним десятковим знаком (5.5)
-            // Для інших металів - ціле число
-            const priceStr = item.name === "Чорний метал"
-                ? price.toFixed(1).padStart(5, ' ')   // "  5.5"
-                : Math.floor(price).toString().padStart(5, ' '); // "   26"
+            // Вага (4 символи: 00.0)
+            const weightStr = (Number(item.weight) || 0).toFixed(1).padStart(4, ' ');
 
-            const weightStr = (Number(item.weight) || 0).toFixed(2).padStart(5, ' ');
-            const weightWithContStr = (item.weightWithContamination || 0).toFixed(2).padStart(5, ' ');
+            // Вага з засміченням (4 символи: 00.0)
+            const weightWithContStr = (item.weightWithContamination || 0).toFixed(1).padStart(4, ' ');
 
-            // Сума (вже має бути цілим числом з calculateSum)
-            const sumStr = (item.sum || 0).toString().padStart(5, ' ');
+            // Сума (4 символи)
+            const sumStr = (item.sum || 0).toString().padStart(4, ' ');
 
-            receipt += `${name} ${rate.toString().padStart(3, ' ')}% ${priceStr} ${weightStr} ${weightWithContStr} ${sumStr}\n`;
+            // Формуємо рядок: [назва][пробіл][%][пробіл][ціна][пробіл][вага][пробіл][вагаз][пробіл][сума]
+            receipt += `${name} ${rate} ${priceStr} ${weightStr} ${weightWithContStr} ${sumStr}\n`;
         });
 
-        receipt += "=".repeat(maxWidth) + "\n";
+        receipt += "-".repeat(maxWidth) + "\n";
 
-        // Загальна сума також має бути цілим числом для чорного металу (але це загальна сума всіх металів)
+        // Підсумок
         const totalText = "РАЗОМ:";
         const totalAmount = `${Math.floor(invoice.total || 0)} грн`;
-        const totalLine = totalText.padEnd(8) + totalAmount.padStart(29);
+        const totalLine = totalText + " ".repeat(6) + totalAmount;
         receipt += totalLine + "\n";
 
         receipt += "=".repeat(maxWidth) + "\n";
-
         receipt += "\n";
         receipt += "Підпис:___________\n";
         receipt += "\n";

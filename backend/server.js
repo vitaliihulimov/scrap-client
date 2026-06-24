@@ -1,8 +1,8 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const Database = require("better-sqlite3");
-const fs = require('fs');
+const { Pool } = require("pg");
 
 const app = express();
 
@@ -25,297 +25,183 @@ app.use(cors({
 
 app.use(express.json());
 
-// ====== База даних ======
-const dbPath = process.env.NODE_ENV === "production"
-    ? "/opt/render/project/src/warehouse.db"
-    : path.join(__dirname, "..", "warehouse.db");
+// ====== База даних (PostgreSQL) ======
+// На Render: підключи PostgreSQL сервіс і він автоматично додасть DATABASE_URL
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+});
 
-console.log("📁 Database path:", dbPath);
+console.log("🐘 Підключення до PostgreSQL...");
 
-// Видаляємо стару базу даних якщо вона існує (тільки для розробки)
-if (process.env.NODE_ENV !== "production" && fs.existsSync(dbPath)) {
-    console.log("🗑️ Видаляємо стару базу даних...");
-    fs.unlinkSync(dbPath);
-    console.log("✅ Стару базу даних видалено");
-}
-
-const db = new Database(dbPath);
-
-// ====== ФУНКЦІЯ ІНІЦІАЛІЗАЦІЇ ЗАСМІЧЕННЯ ======
-const initializeContaminationRates = () => {
+// ====== ІНІЦІАЛІЗАЦІЯ ТАБЛИЦЬ ======
+const initDB = async () => {
+    const client = await pool.connect();
     try {
-        // Створюємо таблицю для засмічення
-        db.exec(`
-            CREATE TABLE IF NOT EXISTS contamination_rates (
-                metal_name TEXT PRIMARY KEY,
-                rate REAL NOT NULL DEFAULT 0,
-                updated_at TEXT
-            );
-        `);
-
-        // Перевіряємо чи є дані
-        const count = db.prepare("SELECT COUNT(*) as count FROM contamination_rates").get().count;
-
-        if (count === 0) {
-            console.log("📦 Додаємо початкові відсотки засмічення...");
-
-            const now = new Date().toISOString();
-            const insert = db.prepare(
-                "INSERT INTO contamination_rates (metal_name, rate, updated_at) VALUES (?, ?, ?)"
-            );
-
-            const initialRates = {
-                // Мідь та мідні сплави
-                "Мідь блеск": 0,
-                "Мідь М1": 0,
-                "Мідь М3": 1,
-                "Мідь фосфорна": 0,
-                "Мідна стружка": 1,
-                "Мідна лента": 1,
-                "Мідний скрап": 1,
-
-                // Латунь
-                "Латунь": 1,
-                "Латунний радіатор": 2,
-                "Латунна стружка": 3,
-                "Латунний скрап": 1,
-                "Стакан великий": 1,
-                "Стакан маленький": 1,
-                "ОЦС": 1,
-                "БРАЖ": 1,
-
-                // Алюміній
-                "Алюмінієвий провод": 0.5,
-                "Алюміній піщевий": 0.5,
-                "Алюмінієвий профіль": 0.5,
-                "Алюмінієві діскі": 1,
-                "Алюміній побутовий": 1,
-                "АМГ": 2,
-                "Алюмінієва банка": 3,
-                "Алюмінієвий радіатор": 3,
-                "Алюміній самолет": 5,
-                "Алюміній военка": 25,
-                "Алюміній моторняк": 1,
-                "Алюмінієва стружка": 5,
-                "Алюмінієвий скрап": 1,
-
-                // Нержавіюча сталь
-                "Нержавейка (10% нікелю)": 0.5,
-                "Нержавейка (10% Б55)": 0,
-                "Нержавейка (9% нікелю)": 0.5,
-                "Нержавейка (8% нікелю)": 0.5,
-                "Нержавейка (0% нікелю)": 0,
-                "Височка скрап": 1,
-                "Нержавіюча стружка (10%)": 5,
-                "Нержавіюча стружка (9%)": 5,
-                "Нержавіюча стружка (8%)": 5,
-                "Нержавіючий скрап": 1,
-                "Нікель": 0,
-                "Нікель лом": 1,
-
-                // Кольорові метали
-                "ЦАМ": 3,
-                "Магній": 3,
-                "Цинк": 0,
-
-                // Свинець та АКБ
-                "Свинець кабельний": 1,
-                "Свинець звичайний": 1,
-                "Свинець шиномонтаж": 5,
-                "АКБ білий": 1,
-                "АКБ чорний": 1,
-                "ТНЖ великі": 3,
-                "ТНЖ маленькі": 3,
-                "ТНЖ 4-к": 3,
-
-                // Рідкісні метали
-                "Титан": 0.5,
-
-                // Сплави
-                "Бабіт (16)": 1,
-                "Бабіт (82)": 1,
-                "Кремній": 1,
-                "Мельхіор": 1,
-                "МН": 1,
-                "Олово": 0,
-                "Припой": 0,
-
-                // Швидкорізи та спецсплави
-                "Рапід Р6М5": 1,
-                "Рапід Р18": 1,
-                "Вольфрам": 0.5,
-                "Молібден": 0.5,
-                "Феромолібден": 1,
-                "Ферованадій": 1,
-
-                // Чорний метал
-                "Чорний метал": 0
-            };
-
-            for (const [metalName, rate] of Object.entries(initialRates)) {
-                insert.run(metalName, rate, now);
-            }
-
-            console.log(`✅ Додано ${Object.keys(initialRates).length} відсотків засмічення`);
-        }
-    } catch (err) {
-        console.error("❌ Помилка ініціалізації засмічення:", err);
-    }
-};
-
-// ====== МЕТАЛИ ======
-app.get("/api/metals", (req, res) => {
-    try {
-        const today = new Date().toISOString().split("T")[0];
-
-        // Створюємо таблиці
-        db.exec(`
+        await client.query(`
             CREATE TABLE IF NOT EXISTS metals (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE
             );
+
             CREATE TABLE IF NOT EXISTS daily_prices (
                 metal_id INTEGER,
-                price INTEGER,
+                price NUMERIC,
                 date TEXT,
                 PRIMARY KEY (metal_id, date)
             );
+
+            CREATE TABLE IF NOT EXISTS contamination_rates (
+                metal_name TEXT PRIMARY KEY,
+                rate NUMERIC NOT NULL DEFAULT 0,
+                updated_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                pin TEXT NOT NULL UNIQUE
+            );
+
+            CREATE TABLE IF NOT EXISTS invoices (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER,
+                created_at TEXT,
+                total INTEGER
+            );
+
+            CREATE TABLE IF NOT EXISTS invoice_items (
+                id SERIAL PRIMARY KEY,
+                invoice_id INTEGER,
+                metal_id INTEGER,
+                weight NUMERIC,
+                price INTEGER,
+                sum INTEGER
+            );
         `);
 
-        const metalCount = db.prepare("SELECT COUNT(*) as count FROM metals").get().count;
-
-        // Якщо таблиця порожня або там менше ніж 64 метали - додаємо всі метали
-        if (metalCount < 64) {
-            console.log("🔄 Очищаємо старі метали...");
-            db.exec("DELETE FROM daily_prices");
-            db.exec("DELETE FROM metals");
-
-            // ОНОВЛЕНИЙ список металів
-            const metals = [
-                // Мідь та мідні сплави
-                [1, "Мідь блеск", 475],
-                [2, "Мідь М1", 475],
-                [3, "Мідь М3", 457],
-                [4, "Мідь фосфорна", 10],
-                [5, "Мідна стружка", 424],
-                [6, "Мідна лента", 424],
-                [7, "Мідний скрап", 10],
-
-                // Латунь
-                [8, "Латунь", 265],
-                [9, "Латунний радіатор", 265],
-                [10, "Латунна стружка", 258],
-                [11, "Латунний скрап", 10],
-                [12, "Стакан великий", 275],
-                [13, "Стакан маленький", 270],
-                [14, "ОЦС", 303],
-                [15, "БРАЖ", 293],
-
-                // Алюміній
-                [16, "Алюмінієвий провод", 115],
-                [17, "Алюміній піщевий", 113],
-                [18, "Алюмінієвий профіль", 98],
-                [19, "Алюмінієві діскі", 98],
-                [20, "Алюміній побутовий", 80],
-                [21, "АМГ", 56],
-                [22, "Алюмінієва банка", 70],
-                [23, "Алюмінієвий радіатор", 65],
-                [24, "Алюміній самолет", 66],
-                [25, "Алюміній военка", 10],
-                [26, "Алюміній моторняк", 82],
-                [27, "Алюмінієва стружка", 50],
-                [28, "Алюмінієвий скрап", 10],
-
-                // Нержавіюча сталь
-                [29, "Нержавейка (10% нікелю)", 32],
-                [30, "Нержавейка (10% Б55)", 42],
-                [31, "Нержавейка (9% нікелю)", 10],
-                [32, "Нержавейка (8% нікелю)", 26],
-                [33, "Нержавейка (0% нікелю)", 6],
-                [34, "Височка скрап", 10],
-                [35, "Нержавіюча стружка (10%)", 20],
-                [36, "Нержавіюча стружка (9%)", 10],
-                [37, "Нержавіюча стружка (8%)", 11],
-                [38, "Нержавіючий скрап", 10],
-                [39, "Нікель", 10],
-                [40, "Нікель лом", 10],
-
-                // Кольорові метали
-                [41, "ЦАМ", 66],
-                [42, "Магній", 50],
-                [43, "Цинк", 85],
-
-                // Свинець та АКБ
-                [44, "Свинець кабельний", 67],
-                [45, "Свинець звичайний", 65],
-                [46, "Свинець шиномонтаж", 10],
-                [47, "АКБ білий", 25],
-                [48, "АКБ чорний", 17],
-                [49, "ТНЖ великі", 18],
-                [50, "ТНЖ маленькі", 16],
-                [51, "ТНЖ 4-к", 5],
-
-                // Рідкісні метали
-                [52, "Титан", 85],
-
-                // Сплави
-                [53, "Бабіт (16)", 10],
-                [54, "Бабіт (82)", 10],
-                [55, "Кремній", 10],
-                [56, "Мельхіор", 10],
-                [57, "МН", 10],
-                [58, "Олово", 10],
-                [59, "Припой", 10],
-
-                // Швидкорізи та спецсплави
-                [60, "Рапід Р6М5", 10],
-                [61, "Рапід Р18", 10],
-                [62, "Вольфрам", 10],
-                [63, "Молібден", 10],
-                [64, "Феромолібден", 10],
-                [65, "Ферованадій", 10],
-
-                // Чорний метал
-                [66, "Чорний метал", 5.5]
-            ];
-
-            console.log(`📦 Додаємо ${metals.length} металів...`);
-
-            const insert = db.prepare("INSERT INTO metals (id, name) VALUES (?, ?)");
-            const insertPrice = db.prepare("INSERT INTO daily_prices (metal_id, price, date) VALUES (?, ?, ?)");
-
-            const addMetals = db.transaction(() => {
-                metals.forEach(([id, name, price]) => {
-                    insert.run(id, name);
-                    insertPrice.run(id, price, today);
-                });
-            });
-
-            addMetals();
-            console.log(`✅ Додано ${metals.length} металів до бази даних`);
+        // Додаємо дефолтного користувача якщо нема
+        const userCount = await client.query("SELECT COUNT(*) as count FROM users");
+        if (parseInt(userCount.rows[0].count) === 0) {
+            await client.query("INSERT INTO users (name, pin) VALUES ($1, $2)", ["Admin", "1234"]);
         }
 
-        const metals = db.prepare(`
+        // Додаємо метали якщо нема
+        const metalCount = await client.query("SELECT COUNT(*) as count FROM metals");
+        if (parseInt(metalCount.rows[0].count) < 64) {
+            console.log("📦 Ініціалізуємо метали...");
+            await client.query("DELETE FROM daily_prices");
+            await client.query("DELETE FROM metals");
+
+            const today = new Date().toISOString().split("T")[0];
+
+            const metals = [
+                [1, "Мідь блеск", 475], [2, "Мідь М1", 475], [3, "Мідь М3", 457],
+                [4, "Мідь фосфорна", 10], [5, "Мідна стружка", 424], [6, "Мідна лента", 424],
+                [7, "Мідний скрап", 10], [8, "Латунь", 265], [9, "Латунний радіатор", 265],
+                [10, "Латунна стружка", 258], [11, "Латунний скрап", 10], [12, "Стакан великий", 275],
+                [13, "Стакан маленький", 270], [14, "ОЦС", 303], [15, "БРАЖ", 293],
+                [16, "Алюмінієвий провод", 115], [17, "Алюміній піщевий", 113],
+                [18, "Алюмінієвий профіль", 98], [19, "Алюмінієві діскі", 98],
+                [20, "Алюміній побутовий", 80], [21, "АМГ", 56], [22, "Алюмінієва банка", 70],
+                [23, "Алюмінієвий радіатор", 65], [24, "Алюміній самолет", 66],
+                [25, "Алюміній военка", 10], [26, "Алюміній моторняк", 82],
+                [27, "Алюмінієва стружка", 50], [28, "Алюмінієвий скрап", 10],
+                [29, "Нержавейка (10% нікелю)", 32], [30, "Нержавейка (10% Б55)", 42],
+                [31, "Нержавейка (9% нікелю)", 10], [32, "Нержавейка (8% нікелю)", 26],
+                [33, "Нержавейка (0% нікелю)", 6], [34, "Височка скрап", 10],
+                [35, "Нержавіюча стружка (10%)", 20], [36, "Нержавіюча стружка (9%)", 10],
+                [37, "Нержавіюча стружка (8%)", 11], [38, "Нержавіючий скрап", 10],
+                [39, "Нікель", 10], [40, "Нікель лом", 10],
+                [41, "ЦАМ", 66], [42, "Магній", 50], [43, "Цинк", 85],
+                [44, "Свинець кабельний", 67], [45, "Свинець звичайний", 65],
+                [46, "Свинець шиномонтаж", 10], [47, "АКБ білий", 25], [48, "АКБ чорний", 17],
+                [49, "ТНЖ великі", 18], [50, "ТНЖ маленькі", 16], [51, "ТНЖ 4-к", 5],
+                [52, "Титан", 85],
+                [53, "Бабіт (16)", 10], [54, "Бабіт (82)", 10], [55, "Кремній", 10],
+                [56, "Мельхіор", 10], [57, "МН", 10], [58, "Олово", 10], [59, "Припой", 10],
+                [60, "Рапід Р6М5", 10], [61, "Рапід Р18", 10], [62, "Вольфрам", 10],
+                [63, "Молібден", 10], [64, "Феромолібден", 10], [65, "Ферованадій", 10],
+                [66, "Чорний метал", 5.5],
+            ];
+
+            for (const [id, name, price] of metals) {
+                await client.query(
+                    "INSERT INTO metals (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+                    [id, name]
+                );
+                await client.query(
+                    "INSERT INTO daily_prices (metal_id, price, date) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                    [id, price, today]
+                );
+            }
+            console.log(`✅ Додано ${metals.length} металів`);
+        }
+
+        // Додаємо засмічення якщо нема
+        const contCount = await client.query("SELECT COUNT(*) as count FROM contamination_rates");
+        if (parseInt(contCount.rows[0].count) === 0) {
+            console.log("📦 Ініціалізуємо засмічення...");
+            const now = new Date().toISOString();
+            const initialRates = {
+                "Мідь блеск": 0, "Мідь М1": 0, "Мідь М3": 1, "Мідь фосфорна": 0,
+                "Мідна стружка": 1, "Мідна лента": 1, "Мідний скрап": 1,
+                "Латунь": 1, "Латунний радіатор": 2, "Латунна стружка": 3,
+                "Латунний скрап": 1, "Стакан великий": 1, "Стакан маленький": 1, "ОЦС": 1, "БРАЖ": 1,
+                "Алюмінієвий провод": 0.5, "Алюміній піщевий": 0.5, "Алюмінієвий профіль": 0.5,
+                "Алюмінієві діскі": 1, "Алюміній побутовий": 1, "АМГ": 2,
+                "Алюмінієва банка": 3, "Алюмінієвий радіатор": 3, "Алюміній самолет": 5,
+                "Алюміній военка": 25, "Алюміній моторняк": 1, "Алюмінієва стружка": 5,
+                "Алюмінієвий скрап": 1,
+                "Нержавейка (10% нікелю)": 0.5, "Нержавейка (10% Б55)": 0,
+                "Нержавейка (9% нікелю)": 0.5, "Нержавейка (8% нікелю)": 0.5,
+                "Нержавейка (0% нікелю)": 0, "Височка скрап": 1,
+                "Нержавіюча стружка (10%)": 5, "Нержавіюча стружка (9%)": 5,
+                "Нержавіюча стружка (8%)": 5, "Нержавіючий скрап": 1, "Нікель": 0, "Нікель лом": 1,
+                "ЦАМ": 3, "Магній": 3, "Цинк": 0,
+                "Свинець кабельний": 1, "Свинець звичайний": 1, "Свинець шиномонтаж": 5,
+                "АКБ білий": 1, "АКБ чорний": 1, "ТНЖ великі": 3, "ТНЖ маленькі": 3, "ТНЖ 4-к": 3,
+                "Титан": 0.5,
+                "Бабіт (16)": 1, "Бабіт (82)": 1, "Кремній": 1, "Мельхіор": 1,
+                "МН": 1, "Олово": 0, "Припой": 0,
+                "Рапід Р6М5": 1, "Рапід Р18": 1, "Вольфрам": 0.5,
+                "Молібден": 0.5, "Феромолібден": 1, "Ферованадій": 1,
+                "Чорний метал": 0,
+            };
+
+            for (const [metalName, rate] of Object.entries(initialRates)) {
+                await client.query(
+                    "INSERT INTO contamination_rates (metal_name, rate, updated_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                    [metalName, rate, now]
+                );
+            }
+            console.log(`✅ Додано засмічення`);
+        }
+
+        console.log("✅ База даних ініціалізована");
+    } finally {
+        client.release();
+    }
+};
+
+// ====== МЕТАЛИ ======
+app.get("/api/metals", async (req, res) => {
+    try {
+        const today = new Date().toISOString().split("T")[0];
+        const result = await pool.query(`
             SELECT m.id, m.name, COALESCE(dp.price, 0) as price
             FROM metals m
-            LEFT JOIN daily_prices dp
-              ON m.id = dp.metal_id AND dp.date = ?
+            LEFT JOIN daily_prices dp ON m.id = dp.metal_id AND dp.date = $1
             ORDER BY m.id
-        `).all(today);
-
-        console.log(`📊 Відправляємо ${metals.length} металів`);
-
-        // Ініціалізуємо засмічення після металів
-        initializeContaminationRates();
-
-        res.json(metals);
+        `, [today]);
+        res.json(result.rows);
     } catch (err) {
-        console.error("❌ Помилка в /api/metals:", err);
+        console.error("❌ /api/metals:", err);
         res.status(500).json({ error: err.message });
     }
 });
 
-app.put("/api/metals/:id", (req, res) => {
+app.put("/api/metals/:id", async (req, res) => {
     const { id } = req.params;
     const { price } = req.body;
     const today = new Date().toISOString().split("T")[0];
@@ -323,12 +209,10 @@ app.put("/api/metals/:id", (req, res) => {
     if (!price || price < 0) return res.status(400).json({ error: "Невірна ціна" });
 
     try {
-        const existing = db.prepare("SELECT * FROM daily_prices WHERE metal_id = ? AND date = ?").get(id, today);
-        if (existing) {
-            db.prepare("UPDATE daily_prices SET price = ? WHERE metal_id = ? AND date = ?").run(price, id, today);
-        } else {
-            db.prepare("INSERT INTO daily_prices (metal_id, price, date) VALUES (?, ?, ?)").run(id, price, today);
-        }
+        await pool.query(`
+            INSERT INTO daily_prices (metal_id, price, date) VALUES ($1, $2, $3)
+            ON CONFLICT (metal_id, date) DO UPDATE SET price = EXCLUDED.price
+        `, [id, price, today]);
         res.json({ success: true, message: "Ціна оновлена" });
     } catch (err) {
         console.error(err);
@@ -337,186 +221,98 @@ app.put("/api/metals/:id", (req, res) => {
 });
 
 // ====== ЗАСМІЧЕННЯ ======
-
-// Отримати всі відсотки засмічення
-app.get("/api/contamination", (req, res) => {
+app.get("/api/contamination", async (req, res) => {
     try {
-        // Перевіряємо чи є таблиця
-        db.exec(`
-            CREATE TABLE IF NOT EXISTS contamination_rates (
-                metal_name TEXT PRIMARY KEY,
-                rate REAL NOT NULL DEFAULT 0,
-                updated_at TEXT
-            );
-        `);
-
-        const rates = db.prepare("SELECT * FROM contamination_rates").all();
-
-        // Конвертуємо в об'єкт { metalName: rate, ... }
+        const result = await pool.query("SELECT * FROM contamination_rates");
         const ratesObject = {};
-        rates.forEach(r => {
-            ratesObject[r.metal_name] = r.rate;
-        });
-
-        console.log('📊 Завантажено засмічення з БД:', Object.keys(ratesObject).length);
+        result.rows.forEach(r => { ratesObject[r.metal_name] = r.rate; });
         res.json(ratesObject);
     } catch (err) {
-        console.error("❌ Помилка отримання засмічення:", err);
+        console.error("❌ /api/contamination GET:", err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Оновити всі відсотки засмічення
-app.put("/api/contamination", (req, res) => {
+app.put("/api/contamination", async (req, res) => {
     try {
-        const rates = req.body; // Об'єкт { "Мідь блеск": 0, "Чорний метал": 3, ... }
+        const rates = req.body;
         const now = new Date().toISOString();
 
-        // Перевіряємо чи є таблиця
-        db.exec(`
-            CREATE TABLE IF NOT EXISTS contamination_rates (
-                metal_name TEXT PRIMARY KEY,
-                rate REAL NOT NULL DEFAULT 0,
-                updated_at TEXT
+        // Очищаємо і вставляємо знову
+        await pool.query("DELETE FROM contamination_rates");
+        for (const [metalName, rate] of Object.entries(rates)) {
+            await pool.query(
+                "INSERT INTO contamination_rates (metal_name, rate, updated_at) VALUES ($1, $2, $3)",
+                [metalName, rate, now]
             );
-        `);
-
-        // Очищаємо таблицю
-        db.prepare("DELETE FROM contamination_rates").run();
-
-        // Вставляємо нові дані
-        const insert = db.prepare(
-            "INSERT INTO contamination_rates (metal_name, rate, updated_at) VALUES (?, ?, ?)"
-        );
-
-        const insertMany = db.transaction((items) => {
-            for (const [metalName, rate] of Object.entries(items)) {
-                insert.run(metalName, rate, now);
-            }
-        });
-
-        insertMany(rates);
-
-        console.log('✅ Збережено засмічення в БД:', Object.keys(rates).length);
-        res.json({
-            success: true,
-            message: "Відсотки засмічення оновлено",
-            count: Object.keys(rates).length
-        });
+        }
+        res.json({ success: true, message: "Засмічення оновлено", count: Object.keys(rates).length });
     } catch (err) {
-        console.error("❌ Помилка збереження засмічення:", err);
+        console.error("❌ /api/contamination PUT:", err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Оновити засмічення для одного металу
-// Оновити засмічення для одного металу
-app.put("/api/contamination/:metalName", (req, res) => {
+app.put("/api/contamination/:metalName", async (req, res) => {
     try {
         const metalName = decodeURIComponent(req.params.metalName);
         const { rate } = req.body;
         const now = new Date().toISOString();
 
         if (rate === undefined || rate < 0 || rate > 100) {
-            return res.status(400).json({
-                error: "Некоректний відсоток. Має бути від 0 до 100"
-            });
+            return res.status(400).json({ error: "Некоректний відсоток. Має бути від 0 до 100" });
         }
 
-        // Перевіряємо чи є таблиця
-        db.exec(`
-            CREATE TABLE IF NOT EXISTS contamination_rates (
-                metal_name TEXT PRIMARY KEY,
-                rate REAL NOT NULL DEFAULT 0,
-                updated_at TEXT
-            );
-        `);
+        await pool.query(`
+            INSERT INTO contamination_rates (metal_name, rate, updated_at) VALUES ($1, $2, $3)
+            ON CONFLICT (metal_name) DO UPDATE SET rate = EXCLUDED.rate, updated_at = EXCLUDED.updated_at
+        `, [metalName, rate, now]);
 
-        // Простий варіант без ON CONFLICT
-        const existing = db.prepare("SELECT * FROM contamination_rates WHERE metal_name = ?").get(metalName);
-
-        if (existing) {
-            db.prepare("UPDATE contamination_rates SET rate = ?, updated_at = ? WHERE metal_name = ?")
-                .run(rate, now, metalName);
-        } else {
-            db.prepare("INSERT INTO contamination_rates (metal_name, rate, updated_at) VALUES (?, ?, ?)")
-                .run(metalName, rate, now);
-        }
-
-        console.log(`✅ Оновлено засмічення для "${metalName}": ${rate}%`);
-        res.json({
-            success: true,
-            message: `Засмічення для "${metalName}" оновлено до ${rate}%`,
-            metalName,
-            rate
-        });
+        res.json({ success: true, metalName, rate });
     } catch (err) {
-        console.error("❌ Помилка оновлення засмічення:", err);
+        console.error("❌ /api/contamination/:metalName PUT:", err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Отримати засмічення для конкретного металу
-app.get("/api/contamination/:metalName", (req, res) => {
+app.get("/api/contamination/:metalName", async (req, res) => {
     try {
         const metalName = decodeURIComponent(req.params.metalName);
-
-        const rate = db.prepare(
-            "SELECT rate FROM contamination_rates WHERE metal_name = ?"
-        ).get(metalName);
-
-        res.json({
-            metalName,
-            rate: rate ? rate.rate : 0
-        });
+        const result = await pool.query(
+            "SELECT rate FROM contamination_rates WHERE metal_name = $1",
+            [metalName]
+        );
+        res.json({ metalName, rate: result.rows[0] ? result.rows[0].rate : 0 });
     } catch (err) {
-        console.error("❌ Помилка отримання засмічення:", err);
+        console.error("❌ /api/contamination/:metalName GET:", err);
         res.status(500).json({ error: err.message });
     }
 });
 
 // ====== НАКЛАДНІ ======
-app.post("/api/invoices", (req, res) => {
+app.post("/api/invoices", async (req, res) => {
     const { userId = 1, items } = req.body;
     if (!items || items.length === 0) return res.status(400).json({ error: "Немає позицій" });
 
     const createdAt = new Date().toISOString();
     const total = Math.floor(items.reduce((s, i) => s + (Number(i.weight) || 0) * i.price, 0));
 
-    db.exec(`
-        CREATE TABLE IF NOT EXISTS invoices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            created_at TEXT,
-            total INTEGER
-        );
-        CREATE TABLE IF NOT EXISTS invoice_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_id INTEGER,
-            metal_id INTEGER,
-            weight REAL,
-            price INTEGER,
-            sum INTEGER
-        );
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            pin TEXT NOT NULL UNIQUE
-        );
-    `);
-
-    const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
-    if (userCount === 0) db.prepare("INSERT INTO users (name, pin) VALUES (?, ?)").run("Admin", "1234");
-
     try {
-        const inv = db.prepare("INSERT INTO invoices (user_id, created_at, total) VALUES (?, ?, ?)").run(userId, createdAt, total);
-        const invoiceId = inv.lastInsertRowid;
+        const inv = await pool.query(
+            "INSERT INTO invoices (user_id, created_at, total) VALUES ($1, $2, $3) RETURNING id",
+            [userId, createdAt, total]
+        );
+        const invoiceId = inv.rows[0].id;
 
-        const stmt = db.prepare("INSERT INTO invoice_items (invoice_id, metal_id, weight, price, sum) VALUES (?, ?, ?, ?, ?)");
-        items.forEach(i => {
+        for (const i of items) {
             const sum = Math.floor((Number(i.weight) || 0) * i.price);
-            if (sum > 0) stmt.run(invoiceId, i.id, i.weight, i.price, sum);
-        });
+            if (sum > 0) {
+                await pool.query(
+                    "INSERT INTO invoice_items (invoice_id, metal_id, weight, price, sum) VALUES ($1, $2, $3, $4, $5)",
+                    [invoiceId, i.id, i.weight, i.price, sum]
+                );
+            }
+        }
 
         res.json({ success: true, invoiceId, createdAt, message: "Накладна збережена" });
     } catch (err) {
@@ -525,30 +321,34 @@ app.post("/api/invoices", (req, res) => {
     }
 });
 
-app.get("/api/invoices", (req, res) => {
+app.get("/api/invoices", async (req, res) => {
     try {
-        const invoices = db.prepare("SELECT * FROM invoices ORDER BY created_at DESC").all();
-        invoices.forEach(inv => {
-            inv.items = db.prepare(`
-                SELECT ii.*, m.name 
+        const invoices = await pool.query("SELECT * FROM invoices ORDER BY created_at DESC");
+        const result = [];
+
+        for (const inv of invoices.rows) {
+            const items = await pool.query(`
+                SELECT ii.*, m.name
                 FROM invoice_items ii
                 LEFT JOIN metals m ON ii.metal_id = m.id
-                WHERE ii.invoice_id = ?
-            `).all(inv.id);
-        });
-        res.json(invoices);
+                WHERE ii.invoice_id = $1
+            `, [inv.id]);
+            result.push({ ...inv, items: items.rows });
+        }
+
+        res.json(result);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
     }
 });
 
-app.delete("/api/invoices/:id", (req, res) => {
+app.delete("/api/invoices/:id", async (req, res) => {
     const { id } = req.params;
     try {
-        db.prepare("DELETE FROM invoice_items WHERE invoice_id = ?").run(id);
-        const result = db.prepare("DELETE FROM invoices WHERE id = ?").run(id);
-        if (result.changes === 0) return res.status(404).json({ error: "Накладна не знайдена" });
+        await pool.query("DELETE FROM invoice_items WHERE invoice_id = $1", [id]);
+        const result = await pool.query("DELETE FROM invoices WHERE id = $1", [id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: "Накладна не знайдена" });
         res.json({ success: true, message: "Накладна видалена" });
     } catch (err) {
         console.error(err);
@@ -556,10 +356,10 @@ app.delete("/api/invoices/:id", (req, res) => {
     }
 });
 
-app.delete("/api/invoices", (req, res) => {
+app.delete("/api/invoices", async (req, res) => {
     try {
-        db.prepare("DELETE FROM invoice_items").run();
-        db.prepare("DELETE FROM invoices").run();
+        await pool.query("DELETE FROM invoice_items");
+        await pool.query("DELETE FROM invoices");
         res.json({ success: true, message: "Всі накладні видалені" });
     } catch (err) {
         console.error(err);
@@ -594,9 +394,8 @@ app.get("/api/health", (req, res) => {
     });
 });
 
-// ====== Root API ======
 app.get("/api", (req, res) => {
-    res.json({ message: "Scrap Metal API is running", version: "1.0.0" });
+    res.json({ message: "Scrap Metal API is running", version: "2.0.0" });
 });
 
 // ====== React SPA ======
@@ -606,9 +405,16 @@ app.get(/^\/(?!api).*/, (req, res) => {
     res.sendFile(path.join(clientBuildPath, "index.html"));
 });
 
-// ====== Запуск сервера ======
+// ====== Запуск ======
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📁 Database: ${dbPath}`);
-});
+
+initDB()
+    .then(() => {
+        app.listen(PORT, () => {
+            console.log(`🚀 Server running on port ${PORT}`);
+        });
+    })
+    .catch(err => {
+        console.error("❌ Помилка ініціалізації БД:", err);
+        process.exit(1);
+    });

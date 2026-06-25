@@ -26,7 +26,6 @@ app.use(cors({
 app.use(express.json());
 
 // ====== База даних (PostgreSQL) ======
-// На Render: підключи PostgreSQL сервіс і він автоматично додасть DATABASE_URL
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
@@ -38,17 +37,12 @@ console.log("🐘 Підключення до PostgreSQL...");
 const initDB = async () => {
     const client = await pool.connect();
     try {
+        // Таблиця metals тепер зберігає поточну ціну напряму — без прив'язки до дати
         await client.query(`
             CREATE TABLE IF NOT EXISTS metals (
                 id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE
-            );
-
-            CREATE TABLE IF NOT EXISTS daily_prices (
-                metal_id INTEGER,
-                price NUMERIC,
-                date TEXT,
-                PRIMARY KEY (metal_id, date)
+                name TEXT NOT NULL UNIQUE,
+                current_price NUMERIC NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS contamination_rates (
@@ -80,20 +74,22 @@ const initDB = async () => {
             );
         `);
 
-        // Додаємо дефолтного користувача якщо нема
+        // Додаємо колонку current_price якщо її ще нема (для існуючих БД)
+        await client.query(`
+            ALTER TABLE metals ADD COLUMN IF NOT EXISTS current_price NUMERIC NOT NULL DEFAULT 0;
+        `).catch(() => { }); // ігноруємо якщо вже є
+
+        // Дефолтний користувач
         const userCount = await client.query("SELECT COUNT(*) as count FROM users");
         if (parseInt(userCount.rows[0].count) === 0) {
             await client.query("INSERT INTO users (name, pin) VALUES ($1, $2)", ["Admin", "1234"]);
         }
 
-        // Додаємо метали якщо нема
+        // Метали з цінами
         const metalCount = await client.query("SELECT COUNT(*) as count FROM metals");
         if (parseInt(metalCount.rows[0].count) < 64) {
             console.log("📦 Ініціалізуємо метали...");
-            await client.query("DELETE FROM daily_prices");
             await client.query("DELETE FROM metals");
-
-            const today = new Date().toISOString().split("T")[0];
 
             const metals = [
                 [1, "Мідь блеск", 475], [2, "Мідь М1", 475], [3, "Мідь М3", 457],
@@ -127,18 +123,14 @@ const initDB = async () => {
 
             for (const [id, name, price] of metals) {
                 await client.query(
-                    "INSERT INTO metals (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
-                    [id, name]
-                );
-                await client.query(
-                    "INSERT INTO daily_prices (metal_id, price, date) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-                    [id, price, today]
+                    "INSERT INTO metals (id, name, current_price) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+                    [id, name, price]
                 );
             }
             console.log(`✅ Додано ${metals.length} металів`);
         }
 
-        // Додаємо засмічення якщо нема
+        // Засмічення
         const contCount = await client.query("SELECT COUNT(*) as count FROM contamination_rates");
         if (parseInt(contCount.rows[0].count) === 0) {
             console.log("📦 Ініціалізуємо засмічення...");
@@ -185,15 +177,12 @@ const initDB = async () => {
 };
 
 // ====== МЕТАЛИ ======
+// Повертає поточні ціни — без прив'язки до дати
 app.get("/api/metals", async (req, res) => {
     try {
-        const today = new Date().toISOString().split("T")[0];
-        const result = await pool.query(`
-            SELECT m.id, m.name, COALESCE(dp.price, 0) as price
-            FROM metals m
-            LEFT JOIN daily_prices dp ON m.id = dp.metal_id AND dp.date = $1
-            ORDER BY m.id
-        `, [today]);
+        const result = await pool.query(
+            "SELECT id, name, current_price as price FROM metals ORDER BY id"
+        );
         res.json(result.rows);
     } catch (err) {
         console.error("❌ /api/metals:", err);
@@ -201,18 +190,18 @@ app.get("/api/metals", async (req, res) => {
     }
 });
 
+// Оновити ціну металу — зберігається назавжди, без дати
 app.put("/api/metals/:id", async (req, res) => {
     const { id } = req.params;
     const { price } = req.body;
-    const today = new Date().toISOString().split("T")[0];
 
-    if (!price || price < 0) return res.status(400).json({ error: "Невірна ціна" });
+    if (price === undefined || price < 0) return res.status(400).json({ error: "Невірна ціна" });
 
     try {
-        await pool.query(`
-            INSERT INTO daily_prices (metal_id, price, date) VALUES ($1, $2, $3)
-            ON CONFLICT (metal_id, date) DO UPDATE SET price = EXCLUDED.price
-        `, [id, price, today]);
+        await pool.query(
+            "UPDATE metals SET current_price = $1 WHERE id = $2",
+            [price, id]
+        );
         res.json({ success: true, message: "Ціна оновлена" });
     } catch (err) {
         console.error(err);
@@ -225,7 +214,7 @@ app.get("/api/contamination", async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM contamination_rates");
         const ratesObject = {};
-        result.rows.forEach(r => { ratesObject[r.metal_name] = r.rate; });
+        result.rows.forEach(r => { ratesObject[r.metal_name] = parseFloat(r.rate); });
         res.json(ratesObject);
     } catch (err) {
         console.error("❌ /api/contamination GET:", err);
@@ -238,7 +227,6 @@ app.put("/api/contamination", async (req, res) => {
         const rates = req.body;
         const now = new Date().toISOString();
 
-        // Очищаємо і вставляємо знову
         await pool.query("DELETE FROM contamination_rates");
         for (const [metalName, rate] of Object.entries(rates)) {
             await pool.query(
@@ -282,7 +270,7 @@ app.get("/api/contamination/:metalName", async (req, res) => {
             "SELECT rate FROM contamination_rates WHERE metal_name = $1",
             [metalName]
         );
-        res.json({ metalName, rate: result.rows[0] ? result.rows[0].rate : 0 });
+        res.json({ metalName, rate: result.rows[0] ? parseFloat(result.rows[0].rate) : 0 });
     } catch (err) {
         console.error("❌ /api/contamination/:metalName GET:", err);
         res.status(500).json({ error: err.message });

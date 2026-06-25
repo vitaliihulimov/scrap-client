@@ -1,101 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
-// Конфігурація API - автоматично визначає URL для production/development
 const API_BASE_URL = import.meta.env.VITE_API_URL ?
     `${import.meta.env.VITE_API_URL}/api` :
     'http://localhost:3000/api';
 
-// Пароль для адмін-панелі
-const ADMIN_PASSWORD = "11111"; // Змініть на свій пароль
-
-// Початкові відсотки засмічення для кожного металу
-const initialContaminationRates = {
-    // Мідь та мідні сплави
-    "Мідь блеск": 0,
-    "Мідь М1": 0,
-    "Мідь М3": 1,
-    "Мідь фосфорна": 0,
-    "Мідна стружка": 1,
-    "Мідна лента": 1,
-    "Мідний скрап": 1,
-
-    // Латунь
-    "Латунь": 1,
-    "Латунний радіатор": 2,
-    "Латунна стружка": 3,
-    "Латунний скрап": 1,
-    "Стакан великий": 1,
-    "Стакан маленький": 1,
-    "ОЦС": 1,
-    "БРАЖ": 1,
-
-    // Алюміній
-    "Алюмінієвий провод": 0.5,
-    "Алюміній піщевий": 0.5,
-    "Алюмінієвий профіль": 0.5,
-    "Алюмінієві діскі": 1,
-    "Алюміній побутовий": 1,
-    "АМГ": 2,
-    "Алюмінієва банка": 3,
-    "Алюмінієвий радіатор": 3,
-    "Алюміній самолет": 5,
-    "Алюміній военка": 25,
-    "Алюміній моторняк": 1,
-    "Алюмінієва стружка": 5,
-    "Алюмінієвий скрап": 1,
-
-    // Нержавіюча сталь
-    "Нержавейка (10% нікелю)": 0.5,
-    "Нержавейка (10% Б55)": 0,
-    "Нержавейка (9% нікелю)": 0.5,
-    "Нержавейка (8% нікелю)": 0.5,
-    "Нержавейка (0% нікелю)": 0.5,
-    "Височка скрап": 1,
-    "Нержавіюча стружка 10%": 0.5,
-    "Нержавіюча стружка 9%": 0.5,
-    "Нержавіюча стружка 8%": 0.5,
-    "Нержавіючий скрап": 1,
-    "Нікель": 0,
-    "Нікель лом": 1,
-
-    // Кольорові метали
-    "ЦАМ": 3,
-    "Магній": 3,
-    "Цинк": 0,
-
-    // Свинець та АКБ
-    "Свинець кабельний": 1,
-    "Свинець звичайний": 1,
-    "Свинець шиномонтаж": 0,
-    "АКБ білий": 1,
-    "АКБ чорний": 1,
-    "ТНЖ великі": 3,
-    "ТНЖ маленькі": 3,
-    "ТНЖ 4-к": 3,
-
-    // Рідкісні метали
-    "Титан": 0.5,
-
-    // Сплави
-    "Бабіт (16)": 1,
-    "Бабіт (82)": 1,
-    "Кремній": 1,
-    "Мельхіор": 1,
-    "МН": 1,
-    "Олово": 0,
-    "Припой": 0,
-
-    // Швидкорізи та спецсплави
-    "Рапід Р6М5": 1,
-    "Рапід Р18": 1,
-    "Вольфрам": 0.5,
-    "Молібден": 0.5,
-    "Феромолібден": 1,
-    "Ферованадій": 1,
-
-    // Чорний метал
-    "Чорний метал": 0.5
-};
+const ADMIN_PASSWORD = "11111";
 
 export default function App() {
     const [items, setItems] = useState([]);
@@ -112,617 +21,130 @@ export default function App() {
     const [metalPrices, setMetalPrices] = useState([]);
     const [isSavingPrice, setIsSavingPrice] = useState(false);
     const [tempPrices, setTempPrices] = useState({});
-    const [contaminationRates, setContaminationRates] = useState(initialContaminationRates);
+    const [contaminationRates, setContaminationRates] = useState({});
     const [tempContamination, setTempContamination] = useState({});
-
-    const initialItemsRef = useRef([]);
-    const [invoicesLoaded, setInvoicesLoaded] = useState(false);
     const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
     const [adminPassword, setAdminPassword] = useState("");
     const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+    const [syncStatus, setSyncStatus] = useState("idle"); // idle | syncing | ok | error
 
-    // Функція для округлення ваги з засміченням ВНИЗ до десятих
+    const initialItemsRef = useRef([]);
+
     const roundWeightWithContamination = (weight, contaminationRate) => {
         if (!weight || weight <= 0) return 0;
         const cleanWeight = weight * (1 - contaminationRate / 100);
-        // Відсікаємо до 1 десяткового знаку (округлення вниз)
         return Math.floor(cleanWeight * 10) / 10;
     };
 
-    // Функція для розрахунку суми (вага з засміченням * ціна)
     const calculateSum = (weight, price, metalName, contaminationRate) => {
         if (!weight || weight <= 0) return 0;
         const weightWithCont = roundWeightWithContamination(weight, contaminationRate);
-
-        // Для чорного металу - відкидаємо копійки (залишаємо цілі числа)
-        if (metalName === "Чорний метал") {
-            return Math.floor(weightWithCont * price);
-        }
-
-        // Для всіх інших металів округлення до цілого числа вниз
         return Math.floor(weightWithCont * price);
     };
 
-    // Функція для скорочення назв металів
     const shortenMetalName = (name) => {
         const shortenings = {
-            // Мідь та мідні сплави
-            "Мідь блеск": "Мідь бл",
-            "Мідь М1": "Мідь М1",
-            "Мідь М3": "Мідь М3",
-            "Мідь фосфорна": "Мідь фос",
-            "Мідна стружка": "Мід стр",
-            "Мідна лента": "Мід лент",
-            "Мідний скрап": "Мід скрап",
-
-            // Латунь
-            "Латунь": "Латунь",
-            "Латунний радіатор": "Лат рад",
-            "Латунна стружка": "Лат стр",
-            "Латунний скрап": "Лат скрап",
-            "Стакан великий": "Стак вел",
-            "Стакан маленький": "Стак мал",
-            "ОЦС": "ОЦС",
-            "БРАЖ": "БРАЖ",
-
-            // Алюміній
-            "Алюмінієвий провод": "Ал пров",
-            "Алюміній піщевий": "Ал піщ",
-            "Алюмінієвий профіль": "Ал проф",
-            "Алюмінієві діскі": "Ал діск",
-            "Алюміній побутовий": "Ал поб",
-            "АМГ": "АМГ",
-            "Алюмінієва банка": "Ал бан",
-            "Алюмінієвий радіатор": "Ал рад",
-            "Алюміній самолет": "Ал сам",
-            "Алюміній военка": "Ал воєн",
-            "Алюміній моторняк": "Ал мот",
-            "Алюмінієва стружка": "Ал стр",
-            "Алюмінієвий скрап": "Ал скрап",
-
-            // Нержавіюча сталь
-            "Нержавейка (10% нікелю)": "Нерж 10%",
-            "Нержавейка (10% Б55)": "Нерж Б55",
-            "Нержавейка (9% нікелю)": "Нерж 9%",
-            "Нержавейка (8% нікелю)": "Нерж 8%",
-            "Нержавейка (0% нікелю)": "Нерж 0%",
-            "Височка скрап": "Вис скр",
-            "Нержавіюча стружка 10%": "Нерж стр10%",
-            "Нержавіюча стружка 9%": "Нерж стр9%",
-            "Нержавіюча стружка 8%": "Нерж стр8%",
-            "Нержавіюча стружка (10%)": "Нерж стр10%",
-            "Нержавіюча стружка (9%)": "Нерж стр9%",
-            "Нержавіюча стружка (8%)": "Нерж стр8%",
-            "Нержавіючий скрап": "Нерж скр",
-            "Нікель": "Нікель",
-            "Нікель лом": "Нік лом",
-
-            // Кольорові метали
-            "ЦАМ": "ЦАМ",
-            "Магній": "Магній",
-            "Цинк": "Цинк",
-
-            // Свинець та АКБ
-            "Свинець кабельний": "Св каб",
-            "Свинець звичайний": "Св зв",
-            "Свинець шиномонтаж": "Св шин",
-            "АКБ білий": "АКБ біл",
-            "АКБ чорний": "АКБ чор",
-            "ТНЖ великі": "ТНЖ вел",
-            "ТНЖ маленькі": "ТНЖ мал",
-            "ТНЖ 4-к": "ТНЖ 4к",
-
-            // Рідкісні метали
-            "Титан": "Титан",
-
-            // Сплави
-            "Бабіт (16)": "Баб 16",
-            "Бабіт (82)": "Баб 82",
-            "Кремній": "Крем",
-            "Мельхіор": "Мельх",
-            "МН": "МН",
-            "Олово": "Олово",
-            "Припой": "Припой",
-
-            // Швидкорізи та спецсплави
-            "Рапід Р6М5": "Р6М5",
-            "Рапід Р18": "Р18",
-            "Вольфрам": "Вольф",
-            "Молібден": "Моліб",
-            "Феромолібден": "Феромол",
-            "Ферованадій": "Ферован",
-
-            // Чорний метал
-            "Чорний метал": "Чорн мет"
+            "Мідь блеск": "Мідь бл", "Мідь М1": "Мідь М1", "Мідь М3": "Мідь М3",
+            "Мідь фосфорна": "Мідь фос", "Мідна стружка": "Мід стр", "Мідна лента": "Мід лент",
+            "Мідний скрап": "Мід скрап", "Латунь": "Латунь", "Латунний радіатор": "Лат рад",
+            "Латунна стружка": "Лат стр", "Латунний скрап": "Лат скрап", "Стакан великий": "Стак вел",
+            "Стакан маленький": "Стак мал", "ОЦС": "ОЦС", "БРАЖ": "БРАЖ",
+            "Алюмінієвий провод": "Ал пров", "Алюміній піщевий": "Ал піщ",
+            "Алюмінієвий профіль": "Ал проф", "Алюмінієві діскі": "Ал діск",
+            "Алюміній побутовий": "Ал поб", "АМГ": "АМГ", "Алюмінієва банка": "Ал бан",
+            "Алюмінієвий радіатор": "Ал рад", "Алюміній самолет": "Ал сам",
+            "Алюміній военка": "Ал воєн", "Алюміній моторняк": "Ал мот",
+            "Алюмінієва стружка": "Ал стр", "Алюмінієвий скрап": "Ал скрап",
+            "Нержавейка (10% нікелю)": "Нерж 10%", "Нержавейка (10% Б55)": "Нерж Б55",
+            "Нержавейка (9% нікелю)": "Нерж 9%", "Нержавейка (8% нікелю)": "Нерж 8%",
+            "Нержавейка (0% нікелю)": "Нерж 0%", "Височка скрап": "Вис скр",
+            "Нержавіюча стружка (10%)": "Нерж стр10%", "Нержавіюча стружка (9%)": "Нерж стр9%",
+            "Нержавіюча стружка (8%)": "Нерж стр8%", "Нержавіючий скрап": "Нерж скр",
+            "Нікель": "Нікель", "Нікель лом": "Нік лом",
+            "ЦАМ": "ЦАМ", "Магній": "Магній", "Цинк": "Цинк",
+            "Свинець кабельний": "Св каб", "Свинець звичайний": "Св зв",
+            "Свинець шиномонтаж": "Св шин", "АКБ білий": "АКБ біл", "АКБ чорний": "АКБ чор",
+            "ТНЖ великі": "ТНЖ вел", "ТНЖ маленькі": "ТНЖ мал", "ТНЖ 4-к": "ТНЖ 4к",
+            "Титан": "Титан", "Бабіт (16)": "Баб 16", "Бабіт (82)": "Баб 82",
+            "Кремній": "Крем", "Мельхіор": "Мельх", "МН": "МН", "Олово": "Олово",
+            "Припой": "Припой", "Рапід Р6М5": "Р6М5", "Рапід Р18": "Р18",
+            "Вольфрам": "Вольф", "Молібден": "Моліб", "Феромолібден": "Феромол",
+            "Ферованадій": "Ферован", "Чорний метал": "Чорн мет"
         };
-
         return shortenings[name] || name.substring(0, 8);
     };
 
-    // ОНОВЛЕНІ тестові метали з вашим списком
-    const initialTestMetals = [
-        // Мідь та мідні сплави
-        { id: 1, name: "Мідь блеск", price: 475, weight: "", initialPrice: 388 },
-        { id: 2, name: "Мідь М1", price: 475, weight: "", initialPrice: 388 },
-        { id: 3, name: "Мідь М3", price: 457, weight: "", initialPrice: 388 },
-        { id: 4, name: "Мідь фосфорна", price: 10, weight: "", initialPrice: 388 },
-        { id: 5, name: "Мідна стружка", price: 424, weight: "", initialPrice: 320 },
-        { id: 6, name: "Мідна лента", price: 424, weight: "", initialPrice: 380 },
-        { id: 7, name: "Мідний скрап", price: 10, weight: "", initialPrice: 350 },
-
-        // Латунь
-        { id: 8, name: "Латунь", price: 265, weight: "", initialPrice: 235 },
-        { id: 9, name: "Латунний радіатор", price: 265, weight: "", initialPrice: 210 },
-        { id: 10, name: "Латунна стружка", price: 258, weight: "", initialPrice: 180 },
-        { id: 11, name: "Латунний скрап", price: 10, weight: "", initialPrice: 220 },
-        { id: 12, name: "Стакан великий", price: 275, weight: "", initialPrice: 230 },
-        { id: 13, name: "Стакан маленький", price: 270, weight: "", initialPrice: 230 },
-        { id: 14, name: "ОЦС", price: 303, weight: "", initialPrice: 220 },
-        { id: 15, name: "БРАЖ", price: 293, weight: "", initialPrice: 220 },
-
-        // Алюміній
-        { id: 16, name: "Алюмінієвий провод", price: 115, weight: "", initialPrice: 70 },
-        { id: 17, name: "Алюміній піщевий", price: 113, weight: "", initialPrice: 65 },
-        { id: 18, name: "Алюмінієвий профіль", price: 98, weight: "", initialPrice: 65 },
-        { id: 19, name: "Алюмінієві діскі", price: 98, weight: "", initialPrice: 60 },
-        { id: 20, name: "Алюміній побутовий", price: 80, weight: "", initialPrice: 55 },
-        { id: 21, name: "АМГ", price: 56, weight: "", initialPrice: 75 },
-        { id: 22, name: "Алюмінієва банка", price: 70, weight: "", initialPrice: 50 },
-        { id: 23, name: "Алюмінієвий радіатор", price: 65, weight: "", initialPrice: 65 },
-        { id: 24, name: "Алюміній самолет", price: 66, weight: "", initialPrice: 85 },
-        { id: 25, name: "Алюміній военка", price: 10, weight: "", initialPrice: 95 },
-        { id: 26, name: "Алюміній моторняк", price: 82, weight: "", initialPrice: 75 },
-        { id: 27, name: "Алюмінієва стружка", price: 50, weight: "", initialPrice: 45 },
-        { id: 28, name: "Алюмінієвий скрап", price: 10, weight: "", initialPrice: 50 },
-
-        // Нержавіюча сталь
-        { id: 29, name: "Нержавейка (10% нікелю)", price: 32, weight: "", initialPrice: 90 },
-        { id: 30, name: "Нержавейка (10% Б55)", price: 42, weight: "", initialPrice: 90 },
-        { id: 31, name: "Нержавейка (9% нікелю)", price: 10, weight: "", initialPrice: 85 },
-        { id: 32, name: "Нержавейка (8% нікелю)", price: 26, weight: "", initialPrice: 80 },
-        { id: 33, name: "Нержавейка (0% нікелю)", price: 6, weight: "", initialPrice: 45 },
-        { id: 34, name: "Височка скрап", price: 10, weight: "", initialPrice: 70 },
-        { id: 35, name: "Нержавіюча стружка (10%)", price: 20, weight: "", initialPrice: 60 },
-        { id: 36, name: "Нержавіюча стружка (9%)", price: 10, weight: "", initialPrice: 60 },
-        { id: 37, name: "Нержавіюча стружка (8%)", price: 11, weight: "", initialPrice: 60 },
-        { id: 38, name: "Нержавіючий скрап", price: 10, weight: "", initialPrice: 65 },
-        { id: 39, name: "Нікель", price: 10, weight: "", initialPrice: 350 },
-        { id: 40, name: "Нікель лом", price: 10, weight: "", initialPrice: 320 },
-
-        // Кольорові метали
-        { id: 41, name: "ЦАМ", price: 66, weight: "", initialPrice: 95 },
-        { id: 42, name: "Магній", price: 50, weight: "", initialPrice: 75 },
-        { id: 43, name: "Цинк", price: 85, weight: "", initialPrice: 50 },
-
-        // Свинець та АКБ
-        { id: 44, name: "Свинець кабельний", price: 67, weight: "", initialPrice: 55 },
-        { id: 45, name: "Свинець звичайний", price: 65, weight: "", initialPrice: 45 },
-        { id: 46, name: "Свинець шиномонтаж", price: 10, weight: "", initialPrice: 45 },
-        { id: 47, name: "АКБ білий", price: 25, weight: "", initialPrice: 20 },
-        { id: 48, name: "АКБ чорний", price: 17, weight: "", initialPrice: 18 },
-        { id: 49, name: "ТНЖ великі", price: 18, weight: "", initialPrice: 25 },
-        { id: 50, name: "ТНЖ маленькі", price: 16, weight: "", initialPrice: 25 },
-        { id: 51, name: "ТНЖ 4-к", price: 5, weight: "", initialPrice: 25 },
-
-        // Рідкісні метали
-        { id: 52, name: "Титан", price: 85, weight: "", initialPrice: 160 },
-
-        // Сплави
-        { id: 53, name: "Бабіт (16)", price: 10, weight: "", initialPrice: 120 },
-        { id: 54, name: "Бабіт (82)", price: 10, weight: "", initialPrice: 140 },
-        { id: 55, name: "Кремній", price: 10, weight: "", initialPrice: 80 },
-        { id: 56, name: "Мельхіор", price: 10, weight: "", initialPrice: 200 },
-        { id: 57, name: "МН", price: 10, weight: "", initialPrice: 200 },
-        { id: 58, name: "Олово", price: 10, weight: "", initialPrice: 300 },
-        { id: 59, name: "Припой", price: 10, weight: "", initialPrice: 280 },
-
-        // Швидкорізи та спецсплави
-        { id: 60, name: "Рапід Р6М5", price: 10, weight: "", initialPrice: 150 },
-        { id: 61, name: "Рапід Р18", price: 10, weight: "", initialPrice: 180 },
-        { id: 62, name: "Вольфрам", price: 10, weight: "", initialPrice: 400 },
-        { id: 63, name: "Молібден", price: 10, weight: "", initialPrice: 350 },
-        { id: 64, name: "Феромолібден", price: 10, weight: "", initialPrice: 250 },
-        { id: 65, name: "Ферованадій", price: 10, weight: "", initialPrice: 220 },
-
-        // Чорний метал
-        { id: 66, name: "Чорний метал", price: 5.5, weight: "", initialPrice: 8 }
-    ];
-
-    // Функція для очищення localStorage
-    const clearLocalStorage = () => {
-        try {
-            localStorage.removeItem('metalPrices');
-            localStorage.removeItem('contaminationRates');
-            console.log('Очищено localStorage');
-        } catch (error) {
-            console.error("Помилка очищення localStorage:", error);
-        }
-    };
-
-    // Функція для збереження цін в localStorage
-    const savePricesToLocalStorage = useCallback((prices) => {
-        try {
-            localStorage.setItem('metalPrices', JSON.stringify(prices));
-        } catch (error) {
-            console.error("Помилка збереження цін в localStorage:", error);
-        }
+    // ====== localStorage тільки для накладних (резервний кеш) ======
+    const saveInvoicesToLocalStorage = useCallback((inv) => {
+        try { localStorage.setItem('invoices', JSON.stringify(inv)); } catch (e) {}
     }, []);
 
-    // Функція для збереження відсотків засмічення в localStorage
-    const saveContaminationRatesToLocalStorage = useCallback((rates) => {
-        try {
-            localStorage.setItem('contaminationRates', JSON.stringify(rates));
-        } catch (error) {
-            console.error("Помилка збереження відсотків засмічення в localStorage:", error);
-        }
-    }, []);
-
-    // Функція для завантаження цін з localStorage
-    const loadPricesFromLocalStorage = useCallback(() => {
-        try {
-            const saved = localStorage.getItem('metalPrices');
-            if (saved) {
-                return JSON.parse(saved);
-            }
-        } catch (error) {
-            console.error("Помилка завантаження цін з localStorage:", error);
-        }
-        return null;
-    }, []);
-
-    // Функція для завантаження відсотків засмічення з localStorage
-    const loadContaminationRatesFromLocalStorage = useCallback(() => {
-        try {
-            const saved = localStorage.getItem('contaminationRates');
-            if (saved) {
-                return JSON.parse(saved);
-            }
-        } catch (error) {
-            console.error("Помилка завантаження відсотків засмічення з localStorage:", error);
-        }
-        return null;
-    }, []);
-
-    // Функція для збереження накладних в localStorage
-    const saveInvoicesToLocalStorage = useCallback((invoices) => {
-        try {
-            localStorage.setItem('invoices', JSON.stringify(invoices));
-            console.log('Накладні збережено в localStorage:', invoices.length);
-        } catch (error) {
-            console.error("Помилка збереження накладних в localStorage:", error);
-        }
-    }, []);
-
-    // Функція для завантаження накладних з localStorage
     const loadInvoicesFromLocalStorage = useCallback(() => {
         try {
             const saved = localStorage.getItem('invoices');
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                console.log('Накладні завантажено з localStorage:', parsed.length);
-                return parsed;
-            }
-        } catch (error) {
-            console.error("Помилка завантаження накладних з localStorage:", error);
-        }
-        return null;
+            return saved ? JSON.parse(saved) : null;
+        } catch (e) { return null; }
     }, []);
 
-    // Завантаження даних при першому рендері
+    // ====== Завантаження всіх даних з сервера ======
     useEffect(() => {
         const loadInitialData = async () => {
             try {
-                // Спочатку завантажуємо збережені ціни з localStorage
-                const savedPrices = loadPricesFromLocalStorage();
-                const savedRates = loadContaminationRatesFromLocalStorage();
+                // 1. Метали та ціни — тільки з сервера
+                const metalsRes = await fetch(`${API_BASE_URL}/metals`);
+                if (!metalsRes.ok) throw new Error('Сервер не відповідає');
+                const metalsData = await metalsRes.json();
 
-                if (savedRates) {
-                    setContaminationRates(savedRates);
-                }
-
-                // 1. Завантажуємо метали з сервера
-                let formattedData;
-
-                try {
-                    const res = await fetch(`${API_BASE_URL}/metals`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        console.log('Метали з сервера:', data);
-
-                        // Використовуємо дані з сервера, але якщо є збережені ціни - застосовуємо їх
-                        formattedData = data.map(m => {
-                            // Перевіряємо, чи є збережена ціна для цього металу
-                            const savedPrice = savedPrices?.find(p => p.id === m.id);
-                            return {
-                                ...m,
-                                price: savedPrice ? savedPrice.price : m.price,
-                                weight: "",
-                                initialPrice: savedPrice ? savedPrice.price : m.price
-                            };
-                        });
-                    } else {
-                        throw new Error('Сервер не відповідає');
-                    }
-                } catch (serverError) {
-                    console.log("Сервер недоступний, використовуємо тестові дані:", serverError);
-
-                    // Використовуємо тестові дані, але якщо є збережені ціни - застосовуємо їх
-                    formattedData = initialTestMetals.map(metal => {
-                        // Перевіряємо, чи є збережена ціна для цього металу
-                        const savedPrice = savedPrices?.find(p => p.id === metal.id);
-                        return {
-                            ...metal,
-                            price: savedPrice ? savedPrice.price : metal.price,
-                            defaultPrice: savedPrice ? savedPrice.price : metal.price
-                        };
-                    });
-                }
+                const formattedData = metalsData.map(m => ({
+                    ...m,
+                    price: Number(m.price),
+                    weight: "",
+                    initialPrice: Number(m.price),
+                }));
 
                 setItems(formattedData);
+                setMetalPrices(formattedData);
                 initialItemsRef.current = formattedData;
 
-                // Завантажуємо ціни для адмін панелі - використовуємо збережені або нові
-                if (savedPrices) {
-                    setMetalPrices(savedPrices);
-                } else {
-                    setMetalPrices(formattedData);
+                // 2. Засмічення — тільки з сервера
+                const contRes = await fetch(`${API_BASE_URL}/contamination`);
+                if (contRes.ok) {
+                    const serverRates = await contRes.json();
+                    if (Object.keys(serverRates).length > 0) {
+                        setContaminationRates(serverRates);
+                    }
                 }
 
-                // 2. Завантажуємо накладні з сервера або localStorage
+                // 3. Накладні — з сервера, fallback до localStorage
                 try {
-                    const res = await fetch(`${API_BASE_URL}/invoices`);
-                    if (res.ok) {
-                        const serverInvoices = await res.json();
-                        console.log('Накладні з сервера:', serverInvoices.length);
-
-                        // Перераховуємо всі накладні з правильним округленням
-                        const processedInvoices = serverInvoices.map(inv => {
-                            const processedItems = inv.items.map(item => {
-                                const rate = item.contaminationRate || (savedRates ? savedRates[item.name] : 0) || 0;
-
-                                // Розраховуємо правильну вагу з засміченням
-                                const weight = Number(item.weight) || 0;
-                                const weightWithCont = roundWeightWithContamination(weight, rate);
-
-                                // Розраховуємо правильну суму
-                                let correctSum;
-                                if (item.name === "Чорний метал") {
-                                    correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
-                                } else {
-                                    correctSum = Math.floor(weightWithCont * item.price);
-                                }
-
-                                return {
-                                    ...item,
-                                    contaminationRate: rate,
-                                    weightWithContamination: weightWithCont,
-                                    sum: correctSum
-                                };
-                            });
-
-                            // Перераховуємо загальну суму
-                            const correctTotal = processedItems.reduce((acc, item) => acc + item.sum, 0);
-
-                            return {
-                                ...inv,
-                                items: processedItems,
-                                total: correctTotal
-                            };
-                        });
-
-                        setInvoices(processedInvoices);
-                        saveInvoicesToLocalStorage(processedInvoices);
+                    const invRes = await fetch(`${API_BASE_URL}/invoices`);
+                    if (invRes.ok) {
+                        const serverInvoices = await invRes.json();
+                        setInvoices(serverInvoices);
+                        saveInvoicesToLocalStorage(serverInvoices);
                     } else {
-                        // Якщо сервер не відповідає, беремо з localStorage
-                        const savedInvoices = loadInvoicesFromLocalStorage();
-                        if (savedInvoices && savedInvoices.length > 0) {
-                            console.log('Використовуємо накладні з localStorage');
-
-                            // Перераховуємо всі накладні з правильним округленням
-                            const processedInvoices = savedInvoices.map(inv => {
-                                const processedItems = inv.items.map(item => {
-                                    const rate = item.contaminationRate || (savedRates ? savedRates[item.name] : 0) || 0;
-
-                                    // Розраховуємо правильну вагу з засміченням
-                                    const weight = Number(item.weight) || 0;
-                                    const weightWithCont = roundWeightWithContamination(weight, rate);
-
-                                    // Розраховуємо правильну суму
-                                    let correctSum;
-                                    if (item.name === "Чорний метал") {
-                                        correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
-                                    } else {
-                                        correctSum = Math.floor(weightWithCont * item.price);
-                                    }
-
-                                    return {
-                                        ...item,
-                                        contaminationRate: rate,
-                                        weightWithContamination: weightWithCont,
-                                        sum: correctSum
-                                    };
-                                });
-
-                                // Перераховуємо загальну суму
-                                const correctTotal = processedItems.reduce((acc, item) => acc + item.sum, 0);
-
-                                return {
-                                    ...inv,
-                                    items: processedItems,
-                                    total: correctTotal
-                                };
-                            });
-
-                            setInvoices(processedInvoices);
-                            // Зберігаємо оновлені накладні назад в localStorage
-                            saveInvoicesToLocalStorage(processedInvoices);
-                        } else {
-                            console.log('Немає накладних, використовуємо пустий масив');
-                            setInvoices([]);
-                        }
+                        throw new Error('invoices error');
                     }
-                } catch (invoiceError) {
-                    console.log("Не вдалося завантажити накладні з сервера:", invoiceError);
-                    const savedInvoices = loadInvoicesFromLocalStorage();
-                    if (savedInvoices && savedInvoices.length > 0) {
-                        // Перераховуємо всі накладні з правильним округленням
-                        const processedInvoices = savedInvoices.map(inv => {
-                            const processedItems = inv.items.map(item => {
-                                const rate = item.contaminationRate || (savedRates ? savedRates[item.name] : 0) || 0;
-
-                                // Розраховуємо правильну вагу з засміченням
-                                const weight = Number(item.weight) || 0;
-                                const weightWithCont = roundWeightWithContamination(weight, rate);
-
-                                // Розраховуємо правильну суму
-                                let correctSum;
-                                if (item.name === "Чорний метал") {
-                                    correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
-                                } else {
-                                    correctSum = Math.floor(weightWithCont * item.price);
-                                }
-
-                                return {
-                                    ...item,
-                                    contaminationRate: rate,
-                                    weightWithContamination: weightWithCont,
-                                    sum: correctSum
-                                };
-                            });
-
-                            // Перераховуємо загальну суму
-                            const correctTotal = processedItems.reduce((acc, item) => acc + item.sum, 0);
-
-                            return {
-                                ...inv,
-                                items: processedItems,
-                                total: correctTotal
-                            };
-                        });
-
-                        setInvoices(processedInvoices);
-                    } else {
-                        setInvoices([]);
-                    }
+                } catch {
+                    const cached = loadInvoicesFromLocalStorage();
+                    setInvoices(cached || []);
                 }
 
-                // 3. Завантажуємо актуальні відсотки засмічення з сервера
-                try {
-                    const contRes = await fetch(`${API_BASE_URL}/contamination`);
-                    if (contRes.ok) {
-                        const serverRates = await contRes.json();
-                        // Перевіряємо, чи є дані від сервера
-                        if (Object.keys(serverRates).length > 0) {
-                            setContaminationRates(serverRates);
-                            saveContaminationRatesToLocalStorage(serverRates);
-                            console.log('📊 Засмічення оновлено з сервера:', Object.keys(serverRates).length);
-                        }
-                    }
-                } catch (contError) {
-                    console.log('Сервер недоступний для завантаження засмічення, використовую локальні дані');
-                    // Локальні дані вже встановлені на початку з savedRates
-                }
-
-                setInvoicesLoaded(true);
-                setLoading(false);
-
+                setSyncStatus("ok");
             } catch (error) {
-                console.error("Помилка завантаження даних:", error);
+                console.error("Помилка завантаження даних з сервера:", error);
+                setSyncStatus("error");
 
-                // Завантажуємо збережені ціни з localStorage
-                const savedPrices = loadPricesFromLocalStorage();
-                const savedRates = loadContaminationRatesFromLocalStorage();
-
-                if (savedRates) {
-                    setContaminationRates(savedRates);
-                }
-
-                // Завантажуємо тестові дані, але застосовуємо збережені ціни
-                const metalsWithDefaults = initialTestMetals.map(metal => {
-                    const savedPrice = savedPrices?.find(p => p.id === metal.id);
-                    return {
-                        ...metal,
-                        price: savedPrice ? savedPrice.price : metal.price,
-                        defaultPrice: savedPrice ? savedPrice.price : metal.price
-                    };
-                });
-
-                setItems(metalsWithDefaults);
-                initialItemsRef.current = metalsWithDefaults;
-
-                // Використовуємо збережені ціни для адмін панелі
-                if (savedPrices) {
-                    setMetalPrices(savedPrices);
-                } else {
-                    setMetalPrices(metalsWithDefaults);
-                }
-
-                // Накладні тільки з localStorage
-                const savedInvoices = loadInvoicesFromLocalStorage();
-                if (savedInvoices && savedInvoices.length > 0) {
-                    // Перераховуємо всі накладні з правильним округленням
-                    const processedInvoices = savedInvoices.map(inv => {
-                        const processedItems = inv.items.map(item => {
-                            const rate = item.contaminationRate || (savedRates ? savedRates[item.name] : 0) || 0;
-
-                            // Розраховуємо правильну вагу з засміченням
-                            const weight = Number(item.weight) || 0;
-                            const weightWithCont = roundWeightWithContamination(weight, rate);
-
-                            // Розраховуємо правильну суму
-                            let correctSum;
-                            if (item.name === "Чорний метал") {
-                                correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
-                            } else {
-                                correctSum = Math.floor(weightWithCont * item.price);
-                            }
-
-                            return {
-                                ...item,
-                                contaminationRate: rate,
-                                weightWithContamination: weightWithCont,
-                                sum: correctSum
-                            };
-                        });
-
-                        // Перераховуємо загальну суму
-                        const correctTotal = processedItems.reduce((acc, item) => acc + item.sum, 0);
-
-                        return {
-                            ...inv,
-                            items: processedItems,
-                            total: correctTotal
-                        };
-                    });
-
-                    setInvoices(processedInvoices);
-                } else {
-                    setInvoices([]);
-                }
-
-                // І в блоці помилок теж пробуємо завантажити засмічення з сервера
-                try {
-                    const contRes = await fetch(`${API_BASE_URL}/contamination`);
-                    if (contRes.ok) {
-                        const serverRates = await contRes.json();
-                        if (Object.keys(serverRates).length > 0) {
-                            setContaminationRates(serverRates);
-                            saveContaminationRatesToLocalStorage(serverRates);
-                        }
-                    }
-                } catch (contError) {
-                    // Ігноруємо, локальні дані вже є
-                    console.log('Використовую локальні дані засмічення');
-                }
-
-                setInvoicesLoaded(true);
+                // Fallback — накладні з localStorage
+                const cached = loadInvoicesFromLocalStorage();
+                setInvoices(cached || []);
+            } finally {
                 setLoading(false);
             }
         };
 
         loadInitialData();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [saveInvoicesToLocalStorage, loadInvoicesFromLocalStorage]);
 
     // Оновлення загальної суми
     useEffect(() => {
@@ -734,457 +156,172 @@ export default function App() {
         setTotal(newTotal);
     }, [items, contaminationRates]);
 
-    // Функція для синхронізації накладних з сервером
-    const syncInvoicesFromServer = useCallback(async () => {
-        try {
-            const res = await fetch(`${API_BASE_URL}/invoices`);
-            if (res.ok) {
-                const serverInvoices = await res.json();
-
-                // Перераховуємо всі накладні з правильним округленням
-                const processedInvoices = serverInvoices.map(inv => {
-                    const processedItems = inv.items.map(item => {
-                        const rate = item.contaminationRate || contaminationRates[item.name] || 0;
-
-                        // Розраховуємо правильну вагу з засміченням
-                        const weight = Number(item.weight) || 0;
-                        const weightWithCont = roundWeightWithContamination(weight, rate);
-
-                        // Розраховуємо правильну суму
-                        let correctSum;
-                        if (item.name === "Чорний метал") {
-                            correctSum = Math.floor(weightWithCont * item.price * 10) / 10;
-                        } else {
-                            correctSum = Math.floor(weightWithCont * item.price);
-                        }
-
-                        return {
-                            ...item,
-                            contaminationRate: rate,
-                            weightWithContamination: weightWithCont,
-                            sum: correctSum
-                        };
-                    });
-
-                    // Перераховуємо загальну суму
-                    const correctTotal = processedItems.reduce((acc, item) => acc + item.sum, 0);
-
-                    return {
-                        ...inv,
-                        items: processedItems,
-                        total: correctTotal
-                    };
-                });
-
-                console.log('Накладні після перерахунку:', processedInvoices);
-                setInvoices(processedInvoices);
-                saveInvoicesToLocalStorage(processedInvoices);
-            }
-        } catch (error) {
-            console.error("Помилка синхронізації накладних з сервером:", error);
-        }
-    }, [saveInvoicesToLocalStorage, contaminationRates]);
-
-    // Синхронізація при завантаженні
-    useEffect(() => {
-        if (invoicesLoaded) {
-            syncInvoicesFromServer();
-        }
-    }, [invoicesLoaded, syncInvoicesFromServer]);
-
-    // Функція для оновлення відсотка засмічення
+    // ====== Засмічення ======
     const updateContaminationRate = async (metalName, newRate) => {
         if (newRate < 0 || newRate > 100) {
             alert("Відсоток засмічення має бути від 0 до 100");
             return;
         }
-
-        // 1. Оновлюємо локально (для миттєвого відображення)
-        setContaminationRates(prev => {
-            const updated = { ...prev, [metalName]: newRate };
-            saveContaminationRatesToLocalStorage(updated);
-            return updated;
-        });
-
-        // 2. Відправляємо на сервер
+        setContaminationRates(prev => ({ ...prev, [metalName]: newRate }));
         try {
-            console.log(`🔄 Відправляємо на сервер: ${metalName} = ${newRate}%`);
-
-            const response = await fetch(`${API_BASE_URL}/contamination/${encodeURIComponent(metalName)}`, {
+            await fetch(`${API_BASE_URL}/contamination/${encodeURIComponent(metalName)}`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ rate: newRate })
             });
-
-            if (response.ok) {
-                const result = await response.json();
-                console.log(`✅ Збережено на сервері:`, result);
-            } else {
-                console.error('❌ Помилка сервера:', response.status);
-                alert('Помилка при збереженні на сервері');
-            }
         } catch (error) {
-            console.error('❌ Сервер недоступний:', error);
-            alert('⚠️ Сервер недоступний. Зміни збережено тільки локально');
+            console.error('Помилка збереження засмічення:', error);
         }
     };
 
-    // Функція для тимчасової зміни засмічення в адмін-панелі
     const updateTempContamination = (metalName, newRate) => {
-        setTempContamination(prev => ({
-            ...prev,
-            [metalName]: newRate
-        }));
+        setTempContamination(prev => ({ ...prev, [metalName]: newRate }));
     };
 
-    // Функція для збереження всіх змін засмічення
     const saveAllContaminationChanges = async () => {
         if (Object.keys(tempContamination).length === 0) {
             alert("Немає змін для збереження");
             return;
         }
-
-        // Об'єднуємо поточні значення з тимчасовими змінами
         const updatedRates = { ...contaminationRates, ...tempContamination };
-
-        // Оновлюємо локально
         setContaminationRates(updatedRates);
-        saveContaminationRatesToLocalStorage(updatedRates);
-
-        // Відправляємо на сервер
         try {
-            console.log('🔄 Відправляємо всі зміни на сервер:', updatedRates);
-
             const response = await fetch(`${API_BASE_URL}/contamination`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updatedRates)
             });
-
             if (response.ok) {
                 setTempContamination({});
-                alert("✅ Всі зміни засмічення збережено на сервері!");
+                alert("✅ Засмічення збережено на сервері!");
             } else {
-                alert('❌ Помилка при збереженні на сервері');
+                alert('❌ Помилка при збереженні');
             }
-        } catch (error) {
-            console.error('❌ Сервер недоступний:', error);
-            alert('⚠️ Зміни збережено локально, але сервер недоступний');
+        } catch {
+            alert('⚠️ Сервер недоступний');
         }
     };
 
-    // Функція для скасування змін засмічення
     const cancelContaminationChanges = () => {
         setTempContamination({});
-        alert("❌ Зміни скасовано");
     };
 
-    // Функція для оновлення ціни металу
-    const updateMetalPrice = async (id, newPrice, name) => {
-        if (newPrice < 0) {
-            alert("Ціна не може бути від'ємною!");
-            return;
-        }
-
-        setIsSavingPrice(true);
-
-        try {
-            // 1. Зберігаємо в localStorage
-            const updatedPrices = metalPrices.map(metal =>
-                metal.id === id ? { ...metal, price: newPrice, defaultPrice: newPrice } : metal
-            );
-            setMetalPrices(updatedPrices);
-            savePricesToLocalStorage(updatedPrices);
-
-            // 2. Оновлюємо на сервері
-            try {
-                const response = await fetch(`${API_BASE_URL}/metals/${id}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ price: newPrice })
-                });
-
-                if (!response.ok) {
-                    console.warn("Не вдалося оновити ціну на сервері, але збережено локально");
-                }
-            } catch (serverError) {
-                console.warn("Сервер недоступний, ціна збережена локально:", serverError);
-            }
-
-            // 3. Оновлюємо локальний стан форми
-            setItems(prev => prev.map(item =>
-                item.id === id ? { ...item, price: newPrice, initialPrice: newPrice } : item
-            ));
-
-            // 4. Оновлюємо initialItemsRef
-            initialItemsRef.current = initialItemsRef.current.map(item =>
-                item.id === id ? { ...item, price: newPrice, initialPrice: newPrice } : item
-            );
-
-            // 5. Очищаємо tempPrices для цього металу
-            setTempPrices(prev => {
-                const newTemp = { ...prev };
-                delete newTemp[id];
-                return newTemp;
-            });
-
-            alert(`✅ Ціну на ${name} оновлено до ${newPrice} грн/кг (збережено)`);
-        } catch (error) {
-            console.error("Помилка оновлення ціни:", error);
-            alert("Помилка оновлення ціни");
-        } finally {
-            setIsSavingPrice(false);
-        }
-    };
-
-    // Функція для тимчасової зміни ціни (без збереження)
+    // ====== Ціни ======
     const updateTempPrice = (id, newPrice) => {
-        setMetalPrices(prev => prev.map(metal =>
-            metal.id === id ? { ...metal, price: newPrice } : metal
-        ));
-
-        setTempPrices(prev => ({
-            ...prev,
-            [id]: newPrice
-        }));
+        setMetalPrices(prev => prev.map(m => m.id === id ? { ...m, price: newPrice } : m));
+        setTempPrices(prev => ({ ...prev, [id]: newPrice }));
     };
 
-    // Функція для масового оновлення всіх цін
+    const updateMetalPrice = async (id, newPrice, name) => {
+        if (newPrice < 0) { alert("Ціна не може бути від'ємною!"); return; }
+        setIsSavingPrice(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/metals/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ price: newPrice })
+            });
+            if (response.ok) {
+                // Оновлюємо локальний стан після підтвердження сервера
+                setMetalPrices(prev => prev.map(m => m.id === id ? { ...m, price: newPrice, initialPrice: newPrice } : m));
+                setItems(prev => prev.map(item => item.id === id ? { ...item, price: newPrice, initialPrice: newPrice } : item));
+                initialItemsRef.current = initialItemsRef.current.map(item =>
+                    item.id === id ? { ...item, price: newPrice, initialPrice: newPrice } : item
+                );
+                setTempPrices(prev => { const n = { ...prev }; delete n[id]; return n; });
+                alert(`✅ Ціну на ${name} оновлено до ${newPrice} грн/кг`);
+            } else {
+                alert('❌ Помилка збереження на сервері');
+            }
+        } catch {
+            alert('⚠️ Сервер недоступний');
+        } finally {
+            setIsSavingPrice(false);
+        }
+    };
+
     const updateAllPrices = async () => {
-        if (!window.confirm("Ви впевнені, що хочете оновити всі ціни? Це оновить початкові ціни у всіх формах.")) {
-            return;
-        }
-
+        if (!window.confirm("Зберегти всі змінені ціни на сервері?")) return;
         setIsSavingPrice(true);
-
         try {
-            // 1. Зберігаємо всі ціни в localStorage
-            savePricesToLocalStorage(metalPrices);
-
-            // 2. Оновлюємо кожен метал на сервері
-            const updatePromises = metalPrices.map(metal =>
-                fetch(`${API_BASE_URL}/metals/${metal.id}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ price: metal.price })
-                }).catch(error => {
-                    console.warn(`Не вдалося оновити ціну для металу ${metal.id}:`, error);
-                    return null;
-                })
+            await Promise.all(
+                metalPrices
+                    .filter(m => tempPrices[m.id] !== undefined)
+                    .map(m => fetch(`${API_BASE_URL}/metals/${m.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ price: m.price })
+                    }).catch(() => null))
             );
-
-            await Promise.all(updatePromises);
-
-            // 3. Оновлюємо локальний стан
-            const updatedItems = metalPrices.map(metal => ({
-                ...metal,
-                weight: "",
-                initialPrice: metal.price,
-                defaultPrice: metal.price
+            const updated = metalPrices.map(m => ({ ...m, initialPrice: m.price }));
+            setMetalPrices(updated);
+            setItems(prev => prev.map(item => {
+                const found = updated.find(m => m.id === item.id);
+                return found ? { ...item, price: found.price, initialPrice: found.price } : item;
             }));
-
-            setItems(updatedItems);
-            initialItemsRef.current = updatedItems;
-
-            // 4. Скидаємо tempPrices
+            initialItemsRef.current = initialItemsRef.current.map(item => {
+                const found = updated.find(m => m.id === item.id);
+                return found ? { ...item, price: found.price, initialPrice: found.price } : item;
+            });
             setTempPrices({});
-
-            alert("✅ Всі ціни оновлено та збережено!");
-        } catch (error) {
-            console.error("Помилка оновлення цін:", error);
-
-            // Все одно зберігаємо в localStorage
-            savePricesToLocalStorage(metalPrices);
-
-            const updatedItems = metalPrices.map(metal => ({
-                ...metal,
-                weight: "",
-                initialPrice: metal.price,
-                defaultPrice: metal.price
-            }));
-
-            setItems(updatedItems);
-            initialItemsRef.current = updatedItems;
-            setTempPrices({});
-
-            alert("✅ Всі ціни оновлено локально!");
+            alert("✅ Всі ціни збережено!");
+        } catch {
+            alert('⚠️ Помилка збереження');
         } finally {
             setIsSavingPrice(false);
         }
     };
 
-    // Функція для скидання цін до значень за замовчуванням
-    const resetToDefaultPrices = async () => {
-        if (!window.confirm("Ви впевнені, що хочете скинути всі ціни до значень за замовчуванням?")) {
-            return;
-        }
-
-        setIsSavingPrice(true);
-
-        try {
-            // Отримуємо оригінальні ціни з initialTestMetals
-            const resetPrices = initialTestMetals.map(metal => ({
-                ...metal,
-                defaultPrice: metal.price
-            }));
-
-            // Зберігаємо в localStorage
-            savePricesToLocalStorage(resetPrices);
-            setMetalPrices(resetPrices);
-
-            // Оновлюємо на сервері
-            const updatePromises = resetPrices.map(metal =>
-                fetch(`${API_BASE_URL}/metals/${metal.id}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ price: metal.price })
-                }).catch(error => {
-                    console.warn(`Не вдалося скинути ціну для металу ${metal.id}:`, error);
-                    return null;
-                })
-            );
-
-            await Promise.all(updatePromises);
-
-            // Оновлюємо локальний стан
-            const resetItems = resetPrices.map(metal => ({
-                ...metal,
-                weight: "",
-                initialPrice: metal.price
-            }));
-
-            setItems(resetItems);
-            initialItemsRef.current = resetItems;
-            setTempPrices({});
-
-            alert("✅ Ціни скинуто до значень за замовчуванням!");
-        } catch (error) {
-            console.error("Помилка скидання цін:", error);
-
-            // Все одно скидаємо локально
-            const resetPrices = initialTestMetals.map(metal => ({
-                ...metal,
-                defaultPrice: metal.price
-            }));
-
-            savePricesToLocalStorage(resetPrices);
-            setMetalPrices(resetPrices);
-
-            const resetItems = resetPrices.map(metal => ({
-                ...metal,
-                weight: "",
-                initialPrice: metal.price
-            }));
-
-            setItems(resetItems);
-            initialItemsRef.current = resetItems;
-            setTempPrices({});
-
-            alert("✅ Ціни скинуто локально до значень за замовчуванням!");
-        } finally {
-            setIsSavingPrice(false);
-        }
-    };
-
-    // Функція для скасування всіх тимчасових змін цін
     const cancelAllPriceChanges = () => {
-        if (!window.confirm("Скасувати всі незбережені зміни цін?")) {
-            return;
-        }
-
-        // Завантажуємо збережені ціни з localStorage
-        const savedPrices = loadPricesFromLocalStorage();
-        if (savedPrices) {
-            const restoredPrices = savedPrices.map(price => ({
-                ...price,
-                defaultPrice: initialTestMetals.find(m => m.id === price.id)?.price || price.price
-            }));
-            setMetalPrices(restoredPrices);
-        } else {
-            // Якщо немає збережених цін, відновлюємо до initialTestMetals
-            const restoredPrices = initialTestMetals.map(metal => ({
-                ...metal,
-                defaultPrice: metal.price
-            }));
-            setMetalPrices(restoredPrices);
-        }
-
+        if (!window.confirm("Скасувати всі незбережені зміни цін?")) return;
+        // Відновлюємо ціни до поточних серверних (initialPrice)
+        setMetalPrices(prev => prev.map(m => ({ ...m, price: m.initialPrice })));
         setTempPrices({});
-        alert("✅ Всі зміни цін скасовано!");
     };
 
-    // Функція для видалення всіх накладних
+    const resetToDefaultPrices = async () => {
+        if (!window.confirm("Скинути всі ціни до значень з сервера?")) return;
+        setIsSavingPrice(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/metals`);
+            if (res.ok) {
+                const data = await res.json();
+                const fresh = data.map(m => ({ ...m, price: Number(m.price), initialPrice: Number(m.price), weight: "" }));
+                setItems(fresh);
+                setMetalPrices(fresh);
+                initialItemsRef.current = fresh;
+                setTempPrices({});
+                alert("✅ Ціни оновлено з сервера!");
+            }
+        } catch {
+            alert('⚠️ Помилка');
+        } finally {
+            setIsSavingPrice(false);
+        }
+    };
+
+    // ====== Накладні ======
     const deleteAllInvoices = async () => {
-        if (!window.confirm("ВИ ВПЕВНЕНІ, ЩО ХОЧЕТЕ ВИДАЛИТИ ВСІ НАКЛАДНІ?\n\nЦю дію НЕМОЖЛИВО скасувати! Буде видалено всі дані про накладні.")) {
-            return;
-        }
-
+        if (!window.confirm("ВИДАЛИТИ ВСІ НАКЛАДНІ? Цю дію неможливо скасувати!")) return;
         try {
-            // 1. Очищаємо localStorage
-            localStorage.removeItem('invoices');
-
-            // 2. Очищаємо стан
+            await fetch(`${API_BASE_URL}/invoices`, { method: 'DELETE' });
             setInvoices([]);
-
-            // 3. Видаляємо з сервера
-            try {
-                await fetch(`${API_BASE_URL}/invoices`, {
-                    method: 'DELETE',
-                }).then(res => {
-                    if (res.ok) {
-                        console.log("Всі накладні видалені з сервера");
-                    }
-                }).catch(() => {
-                    console.log("Не вдалося видалити з сервера, продовжуємо локально");
-                });
-            } catch (serverError) {
-                console.warn("Сервер недоступний:", serverError);
-            }
-
-            alert("✅ Всі накладні успішно видалені!");
-        } catch (error) {
-            console.error("Помилка при видаленні всіх накладних:", error);
-            alert("Помилка при видаленні накладних.");
+            localStorage.removeItem('invoices');
+            alert("✅ Всі накладні видалені!");
+        } catch {
+            alert('⚠️ Помилка видалення');
         }
     };
 
-    // Функція для видалення накладної
     const deleteInvoice = async (invoiceId) => {
-        if (!window.confirm("Ви впевнені, що хочете видалити цю накладну? Цю дію неможливо скасувати.")) {
-            return;
-        }
-
+        if (!window.confirm("Видалити цю накладну?")) return;
         try {
-            // 1. Видаляємо з сервера
-            try {
-                await fetch(`${API_BASE_URL}/invoices/${invoiceId}`, {
-                    method: 'DELETE',
-                });
-            } catch (serverError) {
-                console.warn("Не вдалося видалити з сервера:", serverError);
-            }
-
-            // 2. Оновлюємо локальний стан
-            const updatedInvoices = invoices.filter(inv => inv.id !== invoiceId);
-            setInvoices(updatedInvoices);
-
-            // 3. Зберігаємо в localStorage
-            saveInvoicesToLocalStorage(updatedInvoices);
-
-            alert("Накладна успішно видалена!");
-        } catch (error) {
-            console.error("Помилка при видаленні накладної:", error);
-            alert("Помилка при видаленні накладної.");
+            await fetch(`${API_BASE_URL}/invoices/${invoiceId}`, { method: 'DELETE' });
+            const updated = invoices.filter(inv => inv.id !== invoiceId);
+            setInvoices(updated);
+            saveInvoicesToLocalStorage(updated);
+        } catch {
+            alert('⚠️ Помилка видалення');
         }
     };
 
@@ -1207,7 +344,6 @@ export default function App() {
             ...item,
             weight: "",
             price: item.initialPrice,
-            tempContamination: undefined // Видаляємо тимчасові значення
         })));
     };
 
@@ -1216,150 +352,68 @@ export default function App() {
             const weight = Number(i.weight);
             return !isNaN(weight) && weight > 0;
         });
-
         if (itemsWithWeight.length === 0) {
-            alert("Будь ласка, введіть вагу для хоча б одного металу");
+            alert("Введіть вагу для хоча б одного металу");
             return;
         }
-
         setIsSaving(true);
-
         try {
-            // Створюємо об'єкт накладної з тимчасовими значеннями засмічення
             const invoiceItems = itemsWithWeight.map(item => {
-                // ВАЖЛИВО: Використовуємо тимчасове засмічення, якщо воно є, інакше глобальне
-                const rate = item.tempContamination !== undefined
-                    ? item.tempContamination
-                    : (contaminationRates[item.name] || 0);
-
+                const rate = contaminationRates[item.name] || 0;
                 const weight = Number(item.weight);
-
-                // Розраховуємо вагу з засміченням (округляємо до 1 десяткового знаку)
                 const weightWithCont = roundWeightWithContamination(weight, rate);
-
-                // Розраховуємо суму
-                let sum;
-                if (item.name === "Чорний метал") {
-                    sum = Math.floor(weightWithCont * item.price * 10) / 10;
-                } else {
-                    sum = Math.floor(weightWithCont * item.price);
-                }
-
+                const sum = Math.floor(weightWithCont * item.price);
                 return {
                     id: item.id,
                     name: item.name,
                     price: item.price,
                     weight: weight,
                     weightWithContamination: weightWithCont,
-                    contaminationRate: rate, // Зберігаємо ВИКОРИСТАНЕ засмічення
+                    contaminationRate: rate,
                     sum: sum
                 };
             });
 
             const invoiceTotal = invoiceItems.reduce((acc, item) => acc + item.sum, 0);
+            const newInvoice = { items: invoiceItems, total: invoiceTotal, created_at: new Date().toISOString() };
 
-            const newInvoice = {
-                items: invoiceItems,
-                total: invoiceTotal,
-                created_at: new Date().toISOString() // Додаємо дату
-            };
+            const res = await fetch(`${API_BASE_URL}/invoices`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newInvoice)
+            });
 
-            console.log("Збереження накладної:", newInvoice);
-
-            // Зберігаємо на сервері
-            try {
-                const res = await fetch(`${API_BASE_URL}/invoices`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(newInvoice)
-                });
-
-                if (res.ok) {
-                    const result = await res.json();
-
-                    // Додаємо ID від сервера до накладної
-                    const savedInvoice = {
-                        id: result.invoiceId,
-                        ...newInvoice
-                    };
-
-                    // Оновлюємо список накладних
-                    const updatedInvoices = [savedInvoice, ...invoices];
-                    setInvoices(updatedInvoices);
-                    saveInvoicesToLocalStorage(updatedInvoices);
-
-                    // Показуємо чек
-                    viewReceipt(savedInvoice);
-
-                    // Скидаємо форму і очищаємо тимчасові значення
-                    setItems(prev => prev.map(item => ({
-                        ...item,
-                        weight: "",
-                        price: item.initialPrice,
-                        tempContamination: undefined // Видаляємо тимчасові значення
-                    })));
-
-                    alert(`Накладна №${result.invoiceId} успішно збережена!`);
-                } else {
-                    throw new Error('Помилка збереження');
-                }
-            } catch (serverError) {
-                console.warn("Не вдалося зберегти на сервері:", serverError);
-
-                // Локальне збереження
-                const existingIds = invoices.map(inv => inv.id).filter(id => !isNaN(id));
-                const maxId = existingIds.length > 0 ? Math.max(...existingIds) : 0;
-                const newInvoiceId = maxId + 1;
-
-                const localInvoice = {
-                    id: newInvoiceId,
-                    ...newInvoice
-                };
-
-                const updatedInvoices = [localInvoice, ...invoices];
+            if (res.ok) {
+                const result = await res.json();
+                const savedInvoice = { id: result.invoiceId, ...newInvoice };
+                const updatedInvoices = [savedInvoice, ...invoices];
                 setInvoices(updatedInvoices);
                 saveInvoicesToLocalStorage(updatedInvoices);
-
-                viewReceipt(localInvoice);
-
-                // Скидаємо форму і очищаємо тимчасові значення
-                setItems(prev => prev.map(item => ({
-                    ...item,
-                    weight: "",
-                    price: item.initialPrice,
-                    tempContamination: undefined // Видаляємо тимчасові значення
-                })));
-
-                alert(`Накладна №${newInvoiceId} збережена локально!`);
+                viewReceipt(savedInvoice);
+                resetForm();
+                alert(`Накладна №${result.invoiceId} збережена!`);
+            } else {
+                throw new Error('Помилка збереження');
             }
-
         } catch (error) {
-            console.error("Помилка при збереженні накладної:", error);
-            alert("Помилка при збереженні накладної. Спробуйте ще раз.");
+            console.error("Помилка збереження накладної:", error);
+            alert("⚠️ Не вдалося зберегти накладну. Перевірте з'єднання з сервером.");
         } finally {
             setIsSaving(false);
         }
     };
 
-    // Функція для генерації звіту за день
+    // ====== Звіт ======
     const generateDailyReport = () => {
-        if (!dailyReportDate) {
-            alert("Будь ласка, виберіть дату для звіту");
-            return;
-        }
-
+        if (!dailyReportDate) { alert("Виберіть дату"); return; }
         const selectedDate = new Date(dailyReportDate);
-        const startOfDay = new Date(selectedDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(selectedDate);
-        endOfDay.setHours(23, 59, 59, 999);
+        const start = new Date(selectedDate); start.setHours(0, 0, 0, 0);
+        const end = new Date(selectedDate); end.setHours(23, 59, 59, 999);
 
         const dayInvoices = invoices.filter(inv => {
             if (!inv.created_at) return false;
-            const invoiceDate = new Date(inv.created_at);
-            return invoiceDate >= startOfDay && invoiceDate <= endOfDay;
+            const d = new Date(inv.created_at);
+            return d >= start && d <= end;
         });
 
         if (dayInvoices.length === 0) {
@@ -1367,1627 +421,381 @@ export default function App() {
             return;
         }
 
-        // Створюємо об'єкт з усіма металами
         const allMetals = {};
         initialItemsRef.current.forEach(metal => {
             allMetals[metal.name] = {
-                name: metal.name,
-                totalWeight: 0,
-                totalWeightWithCont: 0,
-                totalAmount: 0,
-                averagePrice: 0,
-                transactions: [],
-                price: metal.price,
-                id: metal.id,
-                hasTransactions: false,
+                name: metal.name, totalWeight: 0, totalWeightWithCont: 0,
+                totalAmount: 0, averagePrice: 0, transactions: [],
+                price: metal.price, id: metal.id, hasTransactions: false,
                 contaminationRate: contaminationRates[metal.name] || 0
             };
         });
 
-        // Збираємо статистику по накладних
         let totalDayAmount = 0;
-
         dayInvoices.forEach(invoice => {
             invoice.items.forEach(item => {
                 if (allMetals[item.name]) {
                     const weight = Number(item.weight) || 0;
                     const weightWithCont = item.weightWithContamination || roundWeightWithContamination(weight, item.contaminationRate || 0);
                     const amount = item.sum || 0;
-
                     allMetals[item.name].totalWeight += weight;
                     allMetals[item.name].totalWeightWithCont += weightWithCont;
                     allMetals[item.name].totalAmount += amount;
                     allMetals[item.name].hasTransactions = true;
-                    allMetals[item.name].transactions.push({
-                        weight: weight,
-                        weightWithCont: weightWithCont,
-                        price: item.price,
-                        contaminationRate: item.contaminationRate || 0,
-                        amount: amount
-                    });
-
+                    allMetals[item.name].transactions.push({ weight, weightWithCont, price: item.price, contaminationRate: item.contaminationRate || 0, amount });
                     totalDayAmount += amount;
                 }
             });
         });
 
-        // Розраховуємо середню ціну для металів з транзакціями
-        Object.keys(allMetals).forEach(metalName => {
-            const metal = allMetals[metalName];
-            if (metal.totalWeightWithCont > 0) {
-                metal.averagePrice = Math.round((metal.totalAmount / metal.totalWeightWithCont) * 100) / 100;
-            }
+        Object.keys(allMetals).forEach(name => {
+            const m = allMetals[name];
+            if (m.totalWeightWithCont > 0) m.averagePrice = Math.round((m.totalAmount / m.totalWeightWithCont) * 100) / 100;
         });
 
-        // Сортуємо метали за ID і фільтруємо тільки з транзакціями
-        const sortedMetals = Object.values(allMetals)
-            .filter(metal => metal.hasTransactions)
-            .sort((a, b) => a.id - b.id);
-
+        const sortedMetals = Object.values(allMetals).filter(m => m.hasTransactions).sort((a, b) => a.id - b.id);
         generateReportPDF(selectedDate, sortedMetals, dayInvoices, totalDayAmount);
     };
 
-    // Функція для генерації PDF звіту
     const generateReportPDF = (date, metalStats, dayInvoices, totalDayAmount) => {
         const printWindow = window.open('', '_blank');
-        if (!printWindow) {
-            alert("Дозвольте спливаючі вікна для друку звіту");
-            return;
-        }
-
-        const reportDateStr = date.toLocaleDateString('uk-UA', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-
-        // Фільтруємо тільки метали з транзакціями
-        const metalsWithTransactions = metalStats.filter(m => m.hasTransactions);
-
-        const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Звіт за ${reportDateStr}</title>
-            <style>
-                @page {
-                    size: A4;
-                    margin: 20mm;
-                }
-                
-                body {
-                    font-family: 'Times New Roman', Times, serif;
-                    font-size: 12pt;
-                    line-height: 1.4;
-                    color: #000;
-                    margin: 0;
-                    padding: 0;
-                }
-                
-                .header {
-                    text-align: center;
-                    margin-bottom: 30px;
-                    border-bottom: 2px solid #000;
-                    padding-bottom: 15px;
-                }
-                
-                .header h1 {
-                    font-size: 24pt;
-                    font-weight: bold;
-                    margin: 0 0 10px 0;
-                    text-transform: uppercase;
-                }
-                
-                .header h2 {
-                    font-size: 18pt;
-                    font-weight: normal;
-                    margin: 5px 0;
-                }
-                
-                .summary {
-                    margin-bottom: 30px;
-                    padding: 20px;
-                    background-color: #f5f5f5;
-                    border: 1px solid #000;
-                }
-                
-                .summary-grid {
-                    display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 15px;
-                }
-                
-                .summary-item {
-                    font-size: 12pt;
-                }
-                
-                .summary-item strong {
-                    font-size: 14pt;
-                    display: block;
-                    margin-bottom: 5px;
-                    color: #000;
-                }
-                
-                .summary-value {
-                    font-size: 18pt;
-                    font-weight: bold;
-                }
-                
-                table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin: 20px 0;
-                    font-size: 11pt;
-                }
-                
-                th {
-                    background-color: #000;
-                    color: white;
-                    font-weight: bold;
-                    padding: 10px 5px;
-                    text-align: center;
-                    border: 1px solid #000;
-                    font-size: 11pt;
-                    text-transform: uppercase;
-                }
-                
-                td {
-                    border: 1px solid #000;
-                    padding: 8px 5px;
-                }
-                
-                tr.metal-row {
-                    background-color: #ffffff;
-                }
-                
-                tr.metal-row:nth-child(even) {
-                    background-color: #f5f5f5;
-                }
-                
-                tr.total-row {
-                    font-weight: bold;
-                    background-color: #e0e0e0;
-                }
-                
-                tr.total-row td {
-                    border-top: 2px solid #000;
-                    font-size: 12pt;
-                }
-                
-                .text-right {
-                    text-align: right;
-                }
-                
-                .text-center {
-                    text-align: center;
-                }
-                
-                .number-cell {
-                    text-align: right;
-                    font-family: 'Courier New', monospace;
-                }
-                
-                .signature {
-                    margin-top: 50px;
-                    padding-top: 20px;
-                    border-top: 1px solid #000;
-                    display: flex;
-                    justify-content: space-between;
-                }
-                
-                .signature-line {
-                    width: 200px;
-                    border-bottom: 1px solid #000;
-                    margin-top: 5px;
-                }
-                
-                .footer {
-                    margin-top: 30px;
-                    font-size: 10pt;
-                    color: #666;
-                    text-align: center;
-                    font-style: italic;
-                }
-                
-                @media print {
-                    .no-print {
-                        display: none;
-                    }
-                    
-                    body {
-                        padding: 0;
-                    }
-                    
-                    .summary {
-                        background-color: #f5f5f5;
-                        -webkit-print-color-adjust: exact;
-                        print-color-adjust: exact;
-                    }
-                    
-                    th {
-                        background-color: #000 !important;
-                        color: white !important;
-                        -webkit-print-color-adjust: exact;
-                        print-color-adjust: exact;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="no-print" style="text-align: center; margin-bottom: 20px; padding: 15px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 5px;">
-                <button onclick="window.print()" style="padding: 10px 25px; font-size: 14px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 4px; margin-right: 10px;">
-                    🖨️ Друкувати звіт
-                </button>
-                <button onclick="window.close()" style="padding: 10px 25px; font-size: 14px; cursor: pointer; background: #dc3545; color: white; border: none; border-radius: 4px;">
-                    ✕ Закрити
-                </button>
-            </div>
-            
-            <div class="header">
-                <h1>ЗВІТ ЗА ДЕНЬ</h1>
-                <h2>${reportDateStr}</h2>
-            </div>
-            
-            <div class="summary">
-                <div class="summary-grid">
-                    <div class="summary-item">
-                        <strong>Дата звіту:</strong>
-                        <div>${new Date().toLocaleDateString('uk-UA')}</div>
-                        <div>${new Date().toLocaleTimeString('uk-UA')}</div>
-                    </div>
-                    <div class="summary-item">
-                        <strong>Кількість накладних:</strong>
-                        <div class="summary-value">${dayInvoices.length}</div>
-                    </div>
-                    <div class="summary-item">
-                        <strong>Загальна сума:</strong>
-                        <div class="summary-value">${totalDayAmount.toLocaleString('uk-UA')} грн</div>
-                    </div>
-                </div>
-            </div>
-
-            ${metalsWithTransactions.length > 0 ? `
-                <table>
-                    <thead>
-                        <tr>
-                            <th width="4%">№</th>
-                            <th width="25%">Найменування металу</th>
-                            <th width="5%">Засм.%</th>
-                            <th width="7%">Ціна (грн)</th>
-                            <th width="8%">Вага (кг)</th>
-                            <th width="8%">Вага з засм.</th>
-                            <th width="8%">Сума (грн)</th>
-                            <th width="5%">К-сть</th>
-                            <th width="10%">Середня ціна</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${metalsWithTransactions.map((metal, index) => `
-                            <tr class="metal-row">
-                                <td class="text-center">${index + 1}</td>
-                                <td><strong>${metal.name}</strong></td>
-                                <td class="text-center">${metal.contaminationRate}%</td>
-                                <td class="number-cell">${metal.price}</td>
-                                <td class="number-cell">${metal.totalWeight.toFixed(2)}</td>
-                                <td class="number-cell">${metal.totalWeightWithCont.toFixed(2)}</td>
-                                <td class="number-cell"><strong>${metal.totalAmount.toLocaleString('uk-UA')}</strong></td>
-                                <td class="text-center">${metal.transactions.length}</td>
-                                <td class="number-cell"><strong>${metal.averagePrice.toFixed(2)}</strong></td>
-                            </tr>
-                        `).join('')}
-                        
-                        <tr class="total-row">
-                            <td colspan="4" class="text-right"><strong>РАЗОМ:</strong></td>
-                            <td class="number-cell"><strong>${metalsWithTransactions.reduce((sum, m) => sum + m.totalWeight, 0).toFixed(2)}</strong></td>
-                            <td class="number-cell"><strong>${metalsWithTransactions.reduce((sum, m) => sum + m.totalWeightWithCont, 0).toFixed(2)}</strong></td>
-                            <td class="number-cell"><strong>${totalDayAmount.toLocaleString('uk-UA')}</strong></td>
-                            <td class="text-center"><strong>${metalsWithTransactions.reduce((sum, m) => sum + m.transactions.length, 0)}</strong></td>
-                            <td class="number-cell"><strong>-</strong></td>
-                        </tr>
-                    </tbody>
-                </table>
-            ` : `
-                <div style="text-align: center; padding: 50px; border: 1px solid #000; margin: 20px 0;">
-                    <p style="font-size: 16pt;">За обраний період немає транзакцій</p>
-                </div>
-            `}
-
-            <div class="signature">
-                <div>
-                    <div>Підпис відповідальної особи:</div>
-                    <div class="signature-line"></div>
-                </div>
-                <div>
-                    <div>М.П.</div>
-                </div>
-                <div>
-                    <div>Дата:</div>
-                    <div class="signature-line"></div>
-                </div>
-            </div>
-            
-            <div class="footer">
-                Звіт згенеровано автоматично системою обліку металів
-            </div>
-            
-            <script>
-                window.onload = function() {
-                    setTimeout(() => {
-                        window.print();
-                    }, 500);
-                };
-            </script>
-        </body>
-        </html>
-    `;
-
-        printWindow.document.write(htmlContent);
+        if (!printWindow) { alert("Дозвольте спливаючі вікна"); return; }
+        const reportDateStr = date.toLocaleDateString('uk-UA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Звіт</title>
+        <style>
+            @page { size: A4; margin: 20mm; }
+            body { font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.4; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 15px; }
+            .header h1 { font-size: 24pt; font-weight: bold; margin: 0 0 10px 0; text-transform: uppercase; }
+            .header h2 { font-size: 18pt; font-weight: normal; margin: 5px 0; }
+            .summary { margin-bottom: 30px; padding: 20px; background: #f5f5f5; border: 1px solid #000; }
+            .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+            .summary-value { font-size: 18pt; font-weight: bold; }
+            table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 11pt; }
+            th { background: #000; color: white; padding: 10px 5px; text-align: center; border: 1px solid #000; }
+            td { border: 1px solid #000; padding: 8px 5px; }
+            tr:nth-child(even) { background: #f5f5f5; }
+            .total-row { font-weight: bold; background: #e0e0e0 !important; }
+            .total-row td { border-top: 2px solid #000; }
+            .text-right { text-align: right; }
+            .text-center { text-align: center; }
+            .number-cell { text-align: right; font-family: 'Courier New', monospace; }
+            .signature { margin-top: 50px; padding-top: 20px; border-top: 1px solid #000; display: flex; justify-content: space-between; }
+            .signature-line { width: 200px; border-bottom: 1px solid #000; margin-top: 5px; }
+            .footer { margin-top: 30px; font-size: 10pt; color: #666; text-align: center; font-style: italic; }
+            @media print { .no-print { display: none; } th { background: #000 !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+        </style></head><body>
+        <div class="no-print" style="text-align:center;margin-bottom:20px;padding:15px;background:#f0f0f0;border:1px solid #ccc;border-radius:5px;">
+            <button onclick="window.print()" style="padding:10px 25px;font-size:14px;cursor:pointer;background:#28a745;color:white;border:none;border-radius:4px;margin-right:10px;">🖨️ Друкувати</button>
+            <button onclick="window.close()" style="padding:10px 25px;font-size:14px;cursor:pointer;background:#dc3545;color:white;border:none;border-radius:4px;">✕ Закрити</button>
+        </div>
+        <div class="header"><h1>ЗВІТ ЗА ДЕНЬ</h1><h2>${reportDateStr}</h2></div>
+        <div class="summary"><div class="summary-grid">
+            <div><strong>Дата звіту:</strong><div>${new Date().toLocaleDateString('uk-UA')}</div></div>
+            <div><strong>Накладних:</strong><div class="summary-value">${dayInvoices.length}</div></div>
+            <div><strong>Загальна сума:</strong><div class="summary-value">${totalDayAmount.toLocaleString('uk-UA')} грн</div></div>
+        </div></div>
+        <table><thead><tr>
+            <th width="4%">№</th><th width="25%">Найменування</th><th width="5%">Засм.%</th>
+            <th width="7%">Ціна</th><th width="8%">Вага (кг)</th><th width="8%">Вага з засм.</th>
+            <th width="8%">Сума (грн)</th><th width="5%">К-сть</th><th width="10%">Сер. ціна</th>
+        </tr></thead><tbody>
+        ${metalStats.map((m, i) => `<tr>
+            <td class="text-center">${i + 1}</td><td><strong>${m.name}</strong></td>
+            <td class="text-center">${m.contaminationRate}%</td><td class="number-cell">${m.price}</td>
+            <td class="number-cell">${m.totalWeight.toFixed(2)}</td><td class="number-cell">${m.totalWeightWithCont.toFixed(2)}</td>
+            <td class="number-cell"><strong>${m.totalAmount.toLocaleString('uk-UA')}</strong></td>
+            <td class="text-center">${m.transactions.length}</td><td class="number-cell"><strong>${m.averagePrice.toFixed(2)}</strong></td>
+        </tr>`).join('')}
+        <tr class="total-row">
+            <td colspan="4" class="text-right"><strong>РАЗОМ:</strong></td>
+            <td class="number-cell"><strong>${metalStats.reduce((s, m) => s + m.totalWeight, 0).toFixed(2)}</strong></td>
+            <td class="number-cell"><strong>${metalStats.reduce((s, m) => s + m.totalWeightWithCont, 0).toFixed(2)}</strong></td>
+            <td class="number-cell"><strong>${totalDayAmount.toLocaleString('uk-UA')}</strong></td>
+            <td class="text-center"><strong>${metalStats.reduce((s, m) => s + m.transactions.length, 0)}</strong></td>
+            <td>-</td>
+        </tr></tbody></table>
+        <div class="signature">
+            <div><div>Підпис:</div><div class="signature-line"></div></div>
+            <div><div>М.П.</div></div>
+            <div><div>Дата:</div><div class="signature-line"></div></div>
+        </div>
+        <div class="footer">Звіт згенеровано автоматично</div>
+        <script>window.onload = () => setTimeout(() => window.print(), 500);</script>
+        </body></html>`);
         printWindow.document.close();
     };
 
-    // Функція для форматування чеку
+    // ====== Чек ======
     const formatReceiptForPrinter = (invoice) => {
-        if (!invoice || !invoice.items) {
-            return "Помилка: немає даних для друку";
-        }
-
+        if (!invoice || !invoice.items) return "Помилка: немає даних";
         const maxWidth = 40;
         let receipt = "";
-
-        // Заголовок
         const title = "НАКЛАДНА";
-        const titlePadding = Math.floor((maxWidth - title.length) / 2);
-        receipt += " ".repeat(titlePadding) + title + "\n";
+        receipt += " ".repeat(Math.floor((maxWidth - title.length) / 2)) + title + "\n";
         receipt += "=".repeat(maxWidth) + "\n";
-
-        // Номер і дата
         receipt += `№: ${invoice.id || "---"}\n`;
         const date = invoice.created_at ? new Date(invoice.created_at) : new Date();
         receipt += `Дата: ${date.toLocaleDateString('uk-UA')}\n`;
         receipt += `Час: ${date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}\n`;
         receipt += "-".repeat(maxWidth) + "\n";
-
-        // ЗАГОЛОВКИ - більш компактні
         receipt += "МЕТАЛ  %  ЦІНА  ВАГА  ВАГЗ  СУМА\n";
         receipt += "-".repeat(maxWidth) + "\n";
-
-        // Дані по металах
         invoice.items.forEach(item => {
-            // Скорочуємо назву до 4-5 символів
             let name = shortenMetalName(item.name || "Метал");
-            if (name.length > 5) {
-                name = name.substring(0, 5);
-            }
+            if (name.length > 5) name = name.substring(0, 5);
             name = name.padEnd(5, ' ');
-
-            // Відсоток засмічення (без знака %, 3 символи)
             const rate = (item.contaminationRate || 0).toString().padStart(3, ' ');
-
-            // Ціна (для чорного металу - 1 десятковий знак, для інших - ціле)
-            let priceStr;
-            if (item.name === "Чорний метал") {
-                priceStr = (item.price || 0).toFixed(1).padStart(4, ' ');
-            } else {
-                priceStr = Math.floor(item.price || 0).toString().padStart(4, ' ');
-            }
-
-            // Вага (4 символи: 00.0)
+            const priceStr = Math.floor(item.price || 0).toString().padStart(4, ' ');
             const weightStr = (Number(item.weight) || 0).toFixed(1).padStart(4, ' ');
-
-            // Вага з засміченням (4 символи: 00.0)
             const weightWithContStr = (item.weightWithContamination || 0).toFixed(1).padStart(4, ' ');
-
-            // Сума (4 символи)
             const sumStr = (item.sum || 0).toString().padStart(4, ' ');
-
-            // Формуємо рядок: [назва][пробіл][%][пробіл][ціна][пробіл][вага][пробіл][вагаз][пробіл][сума]
             receipt += `${name} ${rate} ${priceStr} ${weightStr} ${weightWithContStr} ${sumStr}\n`;
         });
-
         receipt += "-".repeat(maxWidth) + "\n";
-
-        // Підсумок
-        const totalText = "РАЗОМ:";
-        const totalAmount = `${Math.floor(invoice.total || 0)} грн`;
-        const totalLine = totalText + " ".repeat(6) + totalAmount;
-        receipt += totalLine + "\n";
-
-        receipt += "=".repeat(maxWidth) + "\n";
-        receipt += "\n";
-        receipt += "Підпис:___________\n";
-        receipt += "\n";
-        receipt += "Дякуємо!\n";
-
+        receipt += `РАЗОМ:      ${Math.floor(invoice.total || 0)} грн\n`;
+        receipt += "=".repeat(maxWidth) + "\n\n";
+        receipt += "Підпис:___________\n\nДякуємо!\n";
         return receipt;
     };
 
-    // Функція для перегляду чеку
     const viewReceipt = (invoice) => {
-        if (!invoice) {
-            alert("Немає даних для перегляду");
-            return;
-        }
-
-        // Перераховуємо всі елементи накладної з правильним округленням
-        const itemsWithCorrectData = invoice.items.map(item => {
-            const rate = item.contaminationRate || contaminationRates[item.name] || 0;
-
-            // Розраховуємо правильну вагу з засміченням
-            const weight = Number(item.weight) || 0;
-            const weightWithCont = roundWeightWithContamination(weight, rate);
-
-            // Розраховуємо правильну суму
-            let correctSum;
-            if (item.name === "Чорний метал") {
-                correctSum = Math.floor(weightWithCont * item.price);
-            } else {
-                correctSum = Math.floor(weightWithCont * item.price);
-            }
-
-            return {
-                ...item,
-                contaminationRate: rate,
-                weightWithContamination: weightWithCont,
-                sum: correctSum
-            };
-        });
-
-        // Перераховуємо загальну суму
-        const correctTotal = itemsWithCorrectData.reduce((acc, item) => acc + item.sum, 0);
-
-        const receiptText = formatReceiptForPrinter({
-            ...invoice,
-            items: itemsWithCorrectData,
-            total: correctTotal
-        });
-
-        setPrintInvoice({
-            ...invoice,
-            items: itemsWithCorrectData,
-            total: correctTotal,
-            receiptText: receiptText
-        });
+        if (!invoice) return;
+        const receiptText = formatReceiptForPrinter(invoice);
+        setPrintInvoice({ ...invoice, receiptText });
     };
 
-    // Функція для друку чеку
     const printToReceiptPrinter = (invoice) => {
-        if (!invoice) {
-            alert("Немає даних для друку");
-            return;
-        }
-
-        // Перераховуємо всі елементи накладної з правильним округленням
-        const itemsWithCorrectData = invoice.items.map(item => {
-            const rate = item.contaminationRate || contaminationRates[item.name] || 0;
-
-            // Розраховуємо правильну вагу з засміченням
-            const weight = Number(item.weight) || 0;
-            const weightWithCont = roundWeightWithContamination(weight, rate);
-
-            // Розраховуємо правильну суму
-            let correctSum;
-            if (item.name === "Чорний метал") {
-                correctSum = Math.floor(weightWithCont * item.price);
-            } else {
-                correctSum = Math.floor(weightWithCont * item.price);
-            }
-
-            return {
-                ...item,
-                contaminationRate: rate,
-                weightWithContamination: weightWithCont,
-                sum: correctSum
-            };
-        });
-
-        // Перераховуємо загальну суму
-        const correctTotal = itemsWithCorrectData.reduce((acc, item) => acc + item.sum, 0);
-
-        const receiptText = formatReceiptForPrinter({
-            ...invoice,
-            items: itemsWithCorrectData,
-            total: correctTotal
-        });
-
+        if (!invoice) return;
+        const receiptText = formatReceiptForPrinter(invoice);
         const printWindow = window.open('', '_blank');
-        if (!printWindow) {
-            alert("Дозвольте спливаючі вікна для цього сайту.");
-            return;
-        }
-
-        printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <meta charset="UTF-8">
-        <title>Чек №${invoice.id}</title>
+        if (!printWindow) { alert("Дозвольте спливаючі вікна"); return; }
+        printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Чек №${invoice.id}</title>
         <style>
             @media print {
-                @page {
-                    size: 80mm auto;
-                    margin: 2mm !important;
-                }
-                
-                body {
-                    margin: 0 !important;
-                    padding: 2mm !important;
-                    width: 76mm !important;
-                    max-width: 76mm !important;
-                    font-family: 'Courier New', Courier, monospace !important;
-                    font-size: 11pt !important;        /* Збільшено з 10pt до 11pt */
-                    font-weight: 600 !important;       /* ДОДАТИ - жирніший шрифт */
-                    line-height: 1.3 !important;
-                    color: black !important;
-                    background: white !important;
-                    -webkit-print-color-adjust: exact !important;
-                }
-                
-                .receipt-content {
-                    white-space: pre !important;
-                    word-wrap: break-word !important;
-                    overflow-wrap: break-word !important;
-                    width: 100% !important;
-                    max-width: 76mm !important;
-                    font-size: 11pt !important;        /* Збільшено з 10pt до 11pt */
-                    font-weight: 600 !important;       /* ДОДАТИ - жирніший шрифт */
-                    line-height: 1.3 !important;
-                }
-                
-                .no-print {
-                    display: none !important;
-                }
+                @page { size: 80mm auto; margin: 2mm !important; }
+                body { margin: 0 !important; padding: 2mm !important; width: 76mm !important; font-family: 'Courier New', monospace !important; font-size: 11pt !important; font-weight: 600 !important; line-height: 1.3 !important; color: black !important; }
+                .receipt-content { white-space: pre !important; width: 100% !important; font-size: 11pt !important; font-weight: 600 !important; }
+                .no-print { display: none !important; }
             }
-            
-            body {
-                font-family: 'Courier New', Courier, monospace;
-                font-size: 14px;
-                font-weight: 600;                      /* ДОДАТИ - жирніший шрифт */
-                line-height: 1.4;
-                padding: 20px;
-                background: #f5f5f5;
-                margin: 0;
-            }
-            
-            .receipt-content {
-                white-space: pre;
-                font-family: 'Courier New', Courier, monospace;
-                font-size: 14px;
-                font-weight: 600;                      /* ДОДАТИ - жирніший шрифт */
-                line-height: 1.4;
-                background: white;
-                padding: 20px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                margin: 0 auto;
-                max-width: 400px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                overflow-x: auto;
-            }
-            
-            /* Додаткові стилі для жирності */
-            .receipt-content * {
-                font-weight: 600;                      /* ДОДАТИ - всі елементи всередині будуть жирнішими */
-            }
-            
-            /* Інші стилі залишаються без змін */
-            .controls {
-                text-align: center;
-                margin: 20px 0;
-                padding: 15px;
-                background: white;
-                border-radius: 8px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            }
-            
-            button {
-                padding: 10px 20px;
-                margin: 5px;
-                font-size: 16px;
-                cursor: pointer;
-                background: #007bff;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                transition: background 0.3s;
-            }
-            
-            .print-btn {
-                background: #28a745;
-            }
-            
-            .close-btn {
-                background: #dc3545;
-            }
-        </style>
-    </head>
-        <body>
-            <div class="controls no-print">
-                <h3 style="margin: 0 0 15px 0;">Чек №${invoice.id}</h3>
-                <p style="margin: 0 0 15px 0; color: #666;">Ширина: 80 мм (40 символів)</p>
-                <button class="print-btn" onclick="window.print()">🖨️ Друкувати чек</button>
-                <button class="close-btn" onclick="window.close()">✕ Закрити</button>
-            </div>
-            
-            <div class="receipt-content">
-${receiptText}
-            </div>
-            
-            <div class="controls no-print">
-                <button class="print-btn" onclick="window.print()">🖨️ Друкувати чек</button>
-                <button class="close-btn" onclick="window.close()">✕ Закрити</button>
-            </div>
-            
-            <script>
-                window.addEventListener('load', function() {
-                    setTimeout(function() {
-                        window.print();
-                    }, 500);
-                });
-            </script>
-        </body>
-        </html>
-    `);
-
+            body { font-family: 'Courier New', monospace; font-size: 14px; font-weight: 600; line-height: 1.4; padding: 20px; background: #f5f5f5; }
+            .receipt-content { white-space: pre; font-family: 'Courier New', monospace; font-size: 14px; font-weight: 600; line-height: 1.4; background: white; padding: 20px; border: 1px solid #ccc; border-radius: 4px; margin: 0 auto; max-width: 400px; }
+            .controls { text-align: center; margin: 20px 0; padding: 15px; background: white; border-radius: 8px; }
+            button { padding: 10px 20px; margin: 5px; font-size: 16px; cursor: pointer; color: white; border: none; border-radius: 4px; }
+        </style></head><body>
+        <div class="controls no-print">
+            <button style="background:#28a745" onclick="window.print()">🖨️ Друкувати чек</button>
+            <button style="background:#dc3545" onclick="window.close()">✕ Закрити</button>
+        </div>
+        <div class="receipt-content">${receiptText}</div>
+        <div class="controls no-print">
+            <button style="background:#28a745" onclick="window.print()">🖨️ Друкувати чек</button>
+            <button style="background:#dc3545" onclick="window.close()">✕ Закрити</button>
+        </div>
+        <script>window.addEventListener('load', () => setTimeout(() => window.print(), 500));</script>
+        </body></html>`);
         printWindow.document.close();
     };
 
-    // Функція для копіювання чеку в буфер
     const copyReceiptToClipboard = (invoice) => {
-        if (!invoice) {
-            alert("Немає даних для копіювання");
-            return;
-        }
-
-        // Перераховуємо всі елементи накладної з правильним округленням
-        const itemsWithCorrectData = invoice.items.map(item => {
-            const rate = item.contaminationRate || contaminationRates[item.name] || 0;
-
-            // Розраховуємо правильну вагу з засміченням
-            const weight = Number(item.weight) || 0;
-            const weightWithCont = roundWeightWithContamination(weight, rate);
-
-            // Розраховуємо правильну суму
-            let correctSum;
-            if (item.name === "Чорний метал") {
-                correctSum = Math.floor(weightWithCont * item.price);
-            } else {
-                correctSum = Math.floor(weightWithCont * item.price);
-            }
-
-            return {
-                ...item,
-                contaminationRate: rate,
-                weightWithContamination: weightWithCont,
-                sum: correctSum
-            };
-        });
-
-        // Перераховуємо загальну суму
-        const correctTotal = itemsWithCorrectData.reduce((acc, item) => acc + item.sum, 0);
-
-        const receiptText = formatReceiptForPrinter({
-            ...invoice,
-            items: itemsWithCorrectData,
-            total: correctTotal
-        });
-
+        const receiptText = formatReceiptForPrinter(invoice);
         navigator.clipboard.writeText(receiptText)
-            .then(() => {
-                alert("Текст чеку скопійовано в буфер обміну!");
-            })
-            .catch(err => {
-                console.error('Помилка копіювання: ', err);
-
-                const textArea = document.createElement('textarea');
-                textArea.value = receiptText;
-                textArea.style.position = 'fixed';
-                textArea.style.opacity = '0';
-                document.body.appendChild(textArea);
-                textArea.select();
-
-                try {
-                    const successful = document.execCommand('copy');
-                    if (successful) {
-                        alert("Текст чеку скопійовано в буфер обміну!");
-                    }
-                } catch (err) {
-                    console.error('Помилка копіювання: ', err);
-                }
-
-                document.body.removeChild(textArea);
+            .then(() => alert("Текст чеку скопійовано!"))
+            .catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = receiptText;
+                ta.style.position = 'fixed'; ta.style.opacity = '0';
+                document.body.appendChild(ta); ta.select();
+                try { document.execCommand('copy'); alert("Скопійовано!"); } catch {}
+                document.body.removeChild(ta);
             });
-    };
-
-    const closePrint = () => {
-        setPrintInvoice(null);
     };
 
     const testServerConnection = async () => {
         try {
             const res = await fetch(`${API_BASE_URL}/metals`);
             const data = await res.json();
-            alert(`Сервер працює! Отримано ${data.length} металів`);
-        } catch (error) {
-            console.error("Тест не пройшов:", error);
-            alert("Не вдалося підключитися до серверу. Використовуються локальні дані.");
+            alert(`✅ Сервер працює! Металів: ${data.length}`);
+        } catch {
+            alert("❌ Сервер недоступний");
         }
     };
 
     const filteredInvoices = invoices
         .filter(inv => {
             if (!fromDate && !toDate) return true;
-
             if (!inv.created_at) return false;
-
-            const invoiceDate = new Date(inv.created_at);
-            invoiceDate.setHours(0, 0, 0, 0);
-
-            if (fromDate) {
-                const from = new Date(fromDate);
-                from.setHours(0, 0, 0, 0);
-                if (invoiceDate < from) return false;
-            }
-
-            if (toDate) {
-                const to = new Date(toDate);
-                to.setHours(23, 59, 59, 999);
-                if (invoiceDate > to) return false;
-            }
-
+            const d = new Date(inv.created_at); d.setHours(0, 0, 0, 0);
+            if (fromDate) { const f = new Date(fromDate); f.setHours(0, 0, 0, 0); if (d < f) return false; }
+            if (toDate) { const t = new Date(toDate); t.setHours(23, 59, 59, 999); if (d > t) return false; }
             return true;
         })
         .sort((a, b) => {
-            const dateA = new Date(a.created_at || 0);
-            const dateB = new Date(b.created_at || 0);
-            return sortAsc ? dateB - dateA : dateA - dateB;
+            const dA = new Date(a.created_at || 0), dB = new Date(b.created_at || 0);
+            return sortAsc ? dB - dA : dA - dB;
         });
 
     const totalFiltered = filteredInvoices.reduce((sum, i) => sum + (i.total || 0), 0);
 
-    if (loading) return <div style={{ padding: 20, color: 'white' }}>Завантаження даних...</div>;
+    if (loading) return <div style={{ padding: 40, color: 'white', textAlign: 'center', fontSize: '1.2rem' }}>⏳ Завантаження даних з сервера...</div>;
+
+    const s = { // styles shorthand
+        input: { padding: '10px', border: '1px solid #555', borderRadius: '6px', fontSize: '14px', backgroundColor: '#333', color: '#fff', outline: 'none' },
+        btn: (bg) => ({ padding: "10px 20px", backgroundColor: bg, color: bg === '#ffc107' ? 'black' : 'white', border: "none", borderRadius: '6px', cursor: "pointer", fontSize: '14px', fontWeight: '500' }),
+    };
 
     return (
         <>
-            <div style={{
-                padding: '20px',
-                maxWidth: '1400px',
-                margin: '0 auto',
-                backgroundColor: '#1a1a1a',
-                minHeight: '100vh',
-                color: '#e0e0e0'
-            }}>
-                <h1 style={{
-                    color: '#ffffff',
-                    marginBottom: '20px',
-                    textAlign: 'center',
-                    fontSize: '2.5rem',
-                    fontWeight: '300'
-                }}>Система обліку металів</h1>
+            <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto', backgroundColor: '#1a1a1a', minHeight: '100vh', color: '#e0e0e0' }}>
+                <h1 style={{ color: '#ffffff', marginBottom: '20px', textAlign: 'center', fontSize: '2.5rem', fontWeight: '300' }}>
+                    Система обліку металів
+                </h1>
 
-                {/* Кнопки управління вгорі */}
-                <div style={{
-                    marginBottom: '20px',
-                    display: 'flex',
-                    gap: '10px',
-                    flexWrap: 'wrap',
-                    justifyContent: 'center'
-                }}>
-                    <button
-                        onClick={testServerConnection}
-                        style={{
-                            padding: "10px 20px",
-                            backgroundColor: "#28a745",
-                            color: "white",
-                            border: "none",
-                            borderRadius: '6px',
-                            cursor: "pointer",
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            transition: 'all 0.3s'
-                        }}
-                        onMouseOver={(e) => e.target.style.backgroundColor = '#218838'}
-                        onMouseOut={(e) => e.target.style.backgroundColor = '#28a745'}
-                    >
-                        🔌 Тестувати сервер
-                    </button>
+                {/* Статус синхронізації */}
+                <div style={{ backgroundColor: syncStatus === 'error' ? '#3a1a1a' : '#1a3a1a', padding: '12px 20px', borderRadius: '8px', marginBottom: '20px', border: `1px solid ${syncStatus === 'error' ? '#dc3545' : '#28a745'}`, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '20px' }}>{syncStatus === 'error' ? '⚠️' : '🟢'}</span>
+                    <div>
+                        <div style={{ color: '#ffffff', fontWeight: '500' }}>
+                            {syncStatus === 'error' ? 'Сервер недоступний — показано кешовані дані' : 'Дані синхронізовані з сервером'}
+                        </div>
+                        <div style={{ color: '#aaa', fontSize: '0.85rem' }}>
+                            {syncStatus === 'error' ? 'Ціни та засмічення можуть бути застарілими' : 'Ціни та засмічення однакові на всіх пристроях'}
+                        </div>
+                    </div>
+                </div>
 
-                    <button
-                        onClick={() => setShowPasswordPrompt(true)}
-                        style={{
-                            padding: "10px 20px",
-                            backgroundColor: "#ffc107",
-                            color: "black",
-                            border: "none",
-                            borderRadius: '6px',
-                            cursor: "pointer",
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            transition: 'all 0.3s'
-                        }}
-                        onMouseOver={(e) => e.target.style.backgroundColor = '#e0a800'}
-                        onMouseOut={(e) => e.target.style.backgroundColor = '#ffc107'}
-                    >
-                        ⚙️ Адмін-панель
-                    </button>
+                {/* Кнопки */}
+                <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <button onClick={testServerConnection} style={s.btn('#28a745')}>🔌 Тестувати сервер</button>
+                    <button onClick={() => setShowPasswordPrompt(true)} style={s.btn('#ffc107')}>⚙️ Адмін-панель</button>
+                    <button onClick={deleteAllInvoices} style={s.btn('#dc3545')}>🗑️ Видалити всі накладні</button>
+                </div>
 
-                    {/* Модальне вікно для введення пароля */}
-                    {showPasswordPrompt && (
-                        <div style={{
-                            position: 'fixed',
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            backgroundColor: 'rgba(0,0,0,0.8)',
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            zIndex: 2000
-                        }}>
-                            <div style={{
-                                backgroundColor: '#2d2d2d',
-                                padding: '30px',
-                                borderRadius: '12px',
-                                width: '400px',
-                                maxWidth: '90%',
-                                border: '2px solid #404040'
-                            }}>
-                                <h3 style={{
-                                    color: '#ffffff',
-                                    marginBottom: '20px',
-                                    fontSize: '1.3rem',
-                                    textAlign: 'center'
-                                }}>
-                                    🔐 Введіть пароль
-                                </h3>
-
-                                <input
-                                    type="password"
-                                    value={adminPassword}
-                                    onChange={(e) => setAdminPassword(e.target.value)}
-                                    onKeyPress={(e) => {
-                                        if (e.key === 'Enter') {
-                                            if (adminPassword === ADMIN_PASSWORD) {
-                                                setIsAdminAuthenticated(true);
-                                                setShowAdminPanel(true);
-                                                setShowPasswordPrompt(false);
-                                                setAdminPassword("");
-                                            } else {
-                                                alert("❌ Невірний пароль!");
-                                                setAdminPassword("");
-                                            }
-                                        }
-                                    }}
-                                    placeholder="Введіть пароль"
-                                    autoFocus
-                                    style={{
-                                        width: '375px',
-                                        padding: '12px',
-                                        marginBottom: '20px',
-                                        border: '1px solid #555',
-                                        borderRadius: '6px',
-                                        fontSize: '16px',
-                                        backgroundColor: '#333',
-                                        color: '#fff',
-                                        outline: 'none'
-                                    }}
-                                />
-
-                                <div style={{
-                                    display: 'flex',
-                                    gap: '10px',
-                                    justifyContent: 'center'
-                                }}>
-                                    <button
-                                        onClick={() => {
-                                            if (adminPassword === ADMIN_PASSWORD) {
-                                                setIsAdminAuthenticated(true);
-                                                setShowAdminPanel(true);
-                                                setShowPasswordPrompt(false);
-                                                setAdminPassword("");
-                                            } else {
-                                                alert("❌ Невірний пароль!");
-                                                setAdminPassword("");
-                                            }
-                                        }}
-                                        style={{
-                                            padding: "10px 25px",
-                                            backgroundColor: '#28a745',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            cursor: 'pointer',
-                                            fontSize: '15px',
-                                            fontWeight: '500'
-                                        }}
-                                    >
-                                        Увійти
-                                    </button>
-
-                                    <button
-                                        onClick={() => {
-                                            setShowPasswordPrompt(false);
-                                            setAdminPassword("");
-                                        }}
-                                        style={{
-                                            padding: "10px 25px",
-                                            backgroundColor: '#dc3545',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            cursor: 'pointer',
-                                            fontSize: '15px',
-                                            fontWeight: '500'
-                                        }}
-                                    >
-                                        Скасувати
-                                    </button>
-                                </div>
+                {/* Пароль */}
+                {showPasswordPrompt && (
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000 }}>
+                        <div style={{ backgroundColor: '#2d2d2d', padding: '30px', borderRadius: '12px', width: '400px', maxWidth: '90%', border: '2px solid #404040' }}>
+                            <h3 style={{ color: '#ffffff', marginBottom: '20px', textAlign: 'center' }}>🔐 Введіть пароль</h3>
+                            <input type="password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)}
+                                onKeyPress={e => { if (e.key === 'Enter') { if (adminPassword === ADMIN_PASSWORD) { setIsAdminAuthenticated(true); setShowAdminPanel(true); setShowPasswordPrompt(false); setAdminPassword(""); } else { alert("❌ Невірний пароль!"); setAdminPassword(""); } } }}
+                                placeholder="Пароль" autoFocus style={{ ...s.input, width: '100%', marginBottom: '20px', boxSizing: 'border-box' }} />
+                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                <button onClick={() => { if (adminPassword === ADMIN_PASSWORD) { setIsAdminAuthenticated(true); setShowAdminPanel(true); setShowPasswordPrompt(false); setAdminPassword(""); } else { alert("❌ Невірний пароль!"); setAdminPassword(""); } }} style={s.btn('#28a745')}>Увійти</button>
+                                <button onClick={() => { setShowPasswordPrompt(false); setAdminPassword(""); }} style={s.btn('#dc3545')}>Скасувати</button>
                             </div>
                         </div>
-                    )}
-
-                    <button
-                        onClick={deleteAllInvoices}
-                        style={{
-                            padding: "10px 20px",
-                            backgroundColor: "#dc3545",
-                            color: "white",
-                            border: "none",
-                            borderRadius: '6px',
-                            cursor: "pointer",
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            transition: 'all 0.3s'
-                        }}
-                        onMouseOver={(e) => e.target.style.backgroundColor = '#c82333'}
-                        onMouseOut={(e) => e.target.style.backgroundColor = '#dc3545'}
-                    >
-                        🗑️ Видалити всі накладні
-                    </button>
-                </div>
-
-                {/* Інформація про збереження */}
-                <div style={{
-                    backgroundColor: '#2d2d2d',
-                    padding: '15px',
-                    borderRadius: '8px',
-                    marginBottom: '20px',
-                    border: '1px solid #404040',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px'
-                }}>
-                    <div style={{
-                        color: '#28a745',
-                        fontSize: '24px'
-                    }}>
-                        💾
                     </div>
-                    <div>
-                        <div style={{
-                            color: '#ffffff',
-                            fontWeight: '500',
-                            marginBottom: '5px'
-                        }}>
-                            Дані зберігаються локально та на сервері
-                        </div>
-                        <div style={{
-                            color: '#aaa',
-                            fontSize: '0.9rem'
-                        }}>
-                            Усі зміни синхронізуються з сервером та зберігаються в вашому браузері.
-                        </div>
-                    </div>
-                </div>
+                )}
 
-                {/* Блок звітів за день */}
-                <div style={{
-                    backgroundColor: '#2d2d2d',
-                    padding: '25px',
-                    borderRadius: '12px',
-                    marginBottom: '30px',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                    border: '1px solid #404040'
-                }}>
-                    <h2 style={{
-                        color: '#ffffff',
-                        marginBottom: '20px',
-                        fontSize: '1.5rem',
-                        borderBottom: '2px solid #404040',
-                        paddingBottom: '10px'
-                    }}>📊 Звіт за день</h2>
-
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '15px',
-                        flexWrap: 'wrap',
-                        marginBottom: '20px'
-                    }}>
+                {/* Звіт за день */}
+                <div style={{ backgroundColor: '#2d2d2d', padding: '25px', borderRadius: '12px', marginBottom: '30px', border: '1px solid #404040' }}>
+                    <h2 style={{ color: '#ffffff', marginBottom: '20px', fontSize: '1.5rem', borderBottom: '2px solid #404040', paddingBottom: '10px' }}>📊 Звіт за день</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
                         <div>
-                            <span style={{
-                                marginRight: '10px',
-                                fontWeight: '500',
-                                color: '#e0e0e0'
-                            }}>Дата звіту:</span>
-                            <input
-                                type="date"
-                                value={dailyReportDate}
-                                onChange={e => setDailyReportDate(e.target.value)}
-                                style={{
-                                    padding: '10px',
-                                    border: '1px solid #555',
-                                    borderRadius: '6px',
-                                    fontSize: '14px',
-                                    backgroundColor: '#333',
-                                    color: '#fff',
-                                    outline: 'none',
-                                    width: '200px'
-                                }}
-                            />
+                            <span style={{ marginRight: '10px', color: '#e0e0e0' }}>Дата:</span>
+                            <input type="date" value={dailyReportDate} onChange={e => setDailyReportDate(e.target.value)} style={{ ...s.input, width: '200px' }} />
                         </div>
-
-                        <button
-                            onClick={generateDailyReport}
-                            style={{
-                                padding: "12px 25px",
-                                backgroundColor: '#6f42c1',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                fontSize: '15px',
-                                fontWeight: '500',
-                                transition: 'all 0.3s',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                            }}
-                            onMouseOver={(e) => e.target.style.backgroundColor = '#5a32a3'}
-                            onMouseOut={(e) => e.target.style.backgroundColor = '#6f42c1'}
-                        >
-                            📄 Згенерувати звіт за день
-                        </button>
-                    </div>
-
-                    <div style={{
-                        color: '#aaa',
-                        fontSize: '0.9rem',
-                        lineHeight: '1.5'
-                    }}>
-                        <p><strong>Звіт включатиме:</strong></p>
-                        <ul style={{ margin: '10px 0 0 20px' }}>
-                            <li>Загальну кількість накладних за обраний день</li>
-                            <li>Детальну статистику по кожному металу (вага, вага з засміченням, середня ціна, сума)</li>
-                            <li>Загальну суму витрат за день</li>
-                            <li>Кількість транзакцій по кожному металу</li>
-                            <li>Відсотки засмічення</li>
-                        </ul>
+                        <button onClick={generateDailyReport} style={{ ...s.btn('#6f42c1'), padding: '12px 25px', fontSize: '15px' }}>📄 Згенерувати звіт</button>
                     </div>
                 </div>
 
-                {/* Форма для нової накладної - ОНОВЛЕНО */}
-                <div style={{
-                    backgroundColor: '#2d2d2d',
-                    padding: '25px',
-                    borderRadius: '12px',
-                    marginBottom: '30px',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                    border: '1px solid #404040'
-                }}>
-                    <h2 style={{
-                        color: '#ffffff',
-                        marginBottom: '20px',
-                        fontSize: '1.5rem',
-                        borderBottom: '2px solid #404040',
-                        paddingBottom: '10px'
-                    }}>Нова накладна</h2>
-
-                    <div style={{
-                        overflowX: 'auto',
-                        marginBottom: '20px',
-                        borderRadius: '8px',
-                        border: '1px solid #404040'
-                    }}>
-                        <table width="100%" cellPadding="12" style={{
-                            borderCollapse: 'collapse',
-                            backgroundColor: '#242424',
-                            minWidth: '1200px'
-                        }}>
-                            <thead style={{
-                                position: 'sticky',
-                                top: 0,
-                                backgroundColor: '#333333',
-                                zIndex: 10
-                            }}>
+                {/* Нова накладна */}
+                <div style={{ backgroundColor: '#2d2d2d', padding: '25px', borderRadius: '12px', marginBottom: '30px', border: '1px solid #404040' }}>
+                    <h2 style={{ color: '#ffffff', marginBottom: '20px', fontSize: '1.5rem', borderBottom: '2px solid #404040', paddingBottom: '10px' }}>Нова накладна</h2>
+                    <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #404040' }}>
+                        <table width="100%" cellPadding="12" style={{ borderCollapse: 'collapse', backgroundColor: '#242424', minWidth: '1000px' }}>
+                            <thead>
                                 <tr style={{ backgroundColor: '#333333' }}>
-                                    <th style={{
-                                        padding: '15px',
-                                        textAlign: 'left',
-                                        borderBottom: '2px solid #404040',
-                                        color: '#ffffff',
-                                        fontWeight: '600'
-                                    }}>Метал</th>
-                                    <th style={{
-                                        padding: '15px',
-                                        textAlign: 'left',
-                                        borderBottom: '2px solid #404040',
-                                        color: '#ffffff',
-                                        fontWeight: '600'
-                                    }}>Ціна / кг</th>
-                                    <th style={{
-                                        padding: '15px',
-                                        textAlign: 'left',
-                                        borderBottom: '2px solid #404040',
-                                        color: '#ffffff',
-                                        fontWeight: '600'
-                                    }}>Засмічення (%)</th>
-                                    <th style={{
-                                        padding: '15px',
-                                        textAlign: 'left',
-                                        borderBottom: '2px solid #404040',
-                                        color: '#ffffff',
-                                        fontWeight: '600'
-                                    }}>Вага (кг)</th>
-                                    <th style={{
-                                        padding: '15px',
-                                        textAlign: 'left',
-                                        borderBottom: '2px solid #404040',
-                                        color: '#ffffff',
-                                        fontWeight: '600'
-                                    }}>Вага з засміченням</th>
-                                    <th style={{
-                                        padding: '15px',
-                                        textAlign: 'left',
-                                        borderBottom: '2px solid #404040',
-                                        color: '#ffffff',
-                                        fontWeight: '600'
-                                    }}>Сума</th>
+                                    {['Метал', 'Ціна / кг', 'Засмічення (%)', 'Вага (кг)', 'Вага з засміченням', 'Сума'].map(h => (
+                                        <th key={h} style={{ padding: '15px', textAlign: 'left', borderBottom: '2px solid #404040', color: '#ffffff', fontWeight: '600' }}>{h}</th>
+                                    ))}
                                 </tr>
                             </thead>
                             <tbody>
                                 {items.map(i => {
-                                    const currentRate = contaminationRates[i.name] || 0;
+                                    const rate = contaminationRates[i.name] || 0;
                                     const weight = Number(i.weight) || 0;
-                                    const weightWithCont = roundWeightWithContamination(weight, currentRate);
-                                    const sum = calculateSum(weight, i.price, i.name, currentRate);
-
+                                    const weightWithCont = roundWeightWithContamination(weight, rate);
+                                    const sum = calculateSum(weight, i.price, i.name, rate);
                                     return (
-                                        <tr key={i.id} style={{
-                                            borderBottom: '1px solid #404040',
-                                            transition: 'background-color 0.2s'
-                                        }}
-                                            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2d2d2d'}
-                                            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#242424'}
-                                        >
-                                            <td style={{
-                                                padding: '15px',
-                                                color: '#e0e0e0'
-                                            }}>{i.name}</td>
+                                        <tr key={i.id} style={{ borderBottom: '1px solid #404040' }}
+                                            onMouseOver={e => e.currentTarget.style.backgroundColor = '#2d2d2d'}
+                                            onMouseOut={e => e.currentTarget.style.backgroundColor = '#242424'}>
+                                            <td style={{ padding: '15px', color: '#e0e0e0' }}>{i.name}</td>
                                             <td style={{ padding: '15px' }}>
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    min="0"
-                                                    value={i.price}
+                                                <input type="number" step="0.01" min="0" value={i.price}
                                                     onChange={e => updatePrice(i.id, e.target.value)}
-                                                    style={{
-                                                        width: '100px',
-                                                        padding: '10px',
-                                                        border: '1px solid #555',
-                                                        borderRadius: '6px',
-                                                        fontSize: '14px',
-                                                        backgroundColor: '#333',
-                                                        color: '#fff',
-                                                        outline: 'none'
-                                                    }}
-                                                />
+                                                    style={{ ...s.input, width: '100px' }} />
                                             </td>
                                             <td style={{ padding: '15px' }}>
-                                                <input
-                                                    type="number"
-                                                    step="0.1"
-                                                    min="0"
-                                                    max="100"
-                                                    value={currentRate}
-                                                    onChange={(e) => {
-                                                        const newRate = parseFloat(e.target.value) || 0;
-                                                        // Змінюємо ТІЛЬКИ для цього рядка, НЕ зберігаємо глобально
-                                                        setItems(prev => prev.map(item =>
-                                                            item.id === i.id
-                                                                ? { ...item, tempContamination: newRate }
-                                                                : item
-                                                        ));
-                                                    }}
-                                                    style={{
-                                                        width: '80px',
-                                                        padding: '10px',
-                                                        border: '1px solid #ffc107',
-                                                        borderRadius: '6px',
-                                                        fontSize: '14px',
-                                                        backgroundColor: '#333',
-                                                        color: '#fff',
-                                                        outline: 'none',
-                                                        fontWeight: 'bold'
-                                                    }}
-                                                />
+                                                <input type="number" step="0.1" min="0" max="100" value={rate}
+                                                    onChange={e => setContaminationRates(prev => ({ ...prev, [i.name]: parseFloat(e.target.value) || 0 }))}
+                                                    style={{ ...s.input, width: '80px', border: '1px solid #ffc107' }} />
                                             </td>
                                             <td style={{ padding: '15px' }}>
-                                                <input
-                                                    type="text"
-                                                    inputMode="decimal"
-                                                    placeholder="0.0"
-                                                    value={i.weight}
+                                                <input type="text" inputMode="decimal" placeholder="0.0" value={i.weight}
                                                     onChange={e => updateWeight(i.id, e.target.value)}
-                                                    style={{
-                                                        width: '100px',
-                                                        padding: '10px',
-                                                        border: '1px solid #555',
-                                                        borderRadius: '6px',
-                                                        fontSize: '14px',
-                                                        backgroundColor: '#333',
-                                                        color: '#fff',
-                                                        outline: 'none'
-                                                    }}
-                                                />
+                                                    style={{ ...s.input, width: '100px' }} />
                                             </td>
-                                            <td style={{
-                                                padding: '15px',
-                                                color: '#28a745',
-                                                fontWeight: 'bold',
-                                                fontSize: '16px'
-                                            }}>
-                                                {weightWithCont.toFixed(2)} кг
-                                            </td>
-                                            <td style={{
-                                                padding: '15px',
-                                                fontWeight: 'bold',
-                                                color: '#28a745',
-                                                fontSize: '16px'
-                                            }}>
-                                                {sum} грн
-                                            </td>
+                                            <td style={{ padding: '15px', color: '#28a745', fontWeight: 'bold', fontSize: '16px' }}>{weightWithCont.toFixed(2)} кг</td>
+                                            <td style={{ padding: '15px', fontWeight: 'bold', color: '#28a745', fontSize: '16px' }}>{sum} грн</td>
                                         </tr>
                                     );
                                 })}
                             </tbody>
                         </table>
                     </div>
-
-                    <div style={{
-                        marginTop: '25px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        backgroundColor: '#333',
-                        padding: '20px',
-                        borderRadius: '8px',
-                        border: '1px solid #404040'
-                    }}>
-                        <div>
-                            <h3 style={{
-                                margin: '0',
-                                color: '#ffffff',
-                                fontSize: '1.2rem'
-                            }}>Всього: <span style={{
-                                color: '#28a745',
-                                fontSize: '1.5rem',
-                                fontWeight: 'bold'
-                            }}>{total} грн</span></h3>
-                            <p style={{
-                                margin: '5px 0 0 0',
-                                color: '#aaa',
-                                fontSize: '0.9rem'
-                            }}>Сума поточної накладної</p>
-                        </div>
+                    <div style={{ marginTop: '25px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#333', padding: '20px', borderRadius: '8px', border: '1px solid #404040' }}>
+                        <h3 style={{ margin: 0, color: '#ffffff' }}>Всього: <span style={{ color: '#28a745', fontSize: '1.5rem', fontWeight: 'bold' }}>{total} грн</span></h3>
                         <div style={{ display: 'flex', gap: '15px' }}>
-                            <button
-                                style={{
-                                    padding: "12px 25px",
-                                    backgroundColor: '#6c757d',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                    fontSize: '15px',
-                                    fontWeight: '500',
-                                    transition: 'all 0.3s'
-                                }}
-                                onClick={resetForm}
-                                onMouseOver={(e) => e.target.style.backgroundColor = '#5a6268'}
-                                onMouseOut={(e) => e.target.style.backgroundColor = '#6c757d'}
-                            >
-                                🔄 Скинути форму
-                            </button>
-                            <button
-                                style={{
-                                    padding: "12px 25px",
-                                    fontSize: '15px',
-                                    backgroundColor: isSaving ? '#6c757d' : '#007bff',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: isSaving ? 'not-allowed' : 'pointer',
-                                    fontWeight: '500',
-                                    transition: 'all 0.3s'
-                                }}
-                                onClick={saveAndPrint}
-                                disabled={isSaving}
-                                onMouseOver={(e) => {
-                                    if (!isSaving) e.target.style.backgroundColor = '#0056b3';
-                                }}
-                                onMouseOut={(e) => {
-                                    if (!isSaving) e.target.style.backgroundColor = '#007bff';
-                                }}
-                            >
+                            <button onClick={resetForm} style={{ ...s.btn('#6c757d'), padding: '12px 25px', fontSize: '15px' }}>🔄 Скинути</button>
+                            <button onClick={saveAndPrint} disabled={isSaving} style={{ ...s.btn(isSaving ? '#6c757d' : '#007bff'), padding: '12px 25px', fontSize: '15px', cursor: isSaving ? 'not-allowed' : 'pointer' }}>
                                 {isSaving ? "⏳ Збереження..." : "💾 Зберегти накладну"}
                             </button>
                         </div>
                     </div>
                 </div>
 
-                {/* Список всіх накладних */}
-                <div style={{
-                    backgroundColor: '#2d2d2d',
-                    padding: '25px',
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                    border: '1px solid #404040'
-                }}>
-                    <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '20px',
-                        flexWrap: 'wrap',
-                        gap: '15px'
-                    }}>
-                        <h2 style={{
-                            color: '#ffffff',
-                            margin: '0',
-                            fontSize: '1.5rem'
-                        }}>Всі накладні</h2>
-
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '15px',
-                            flexWrap: 'wrap'
-                        }}>
-                            <div>
-                                <span style={{
-                                    marginRight: '8px',
-                                    fontWeight: '500',
-                                    color: '#e0e0e0'
-                                }}>Від:</span>
-                                <input
-                                    type="date"
-                                    value={fromDate}
-                                    onChange={e => setFromDate(e.target.value)}
-                                    style={{
-                                        padding: '10px',
-                                        border: '1px solid #555',
-                                        borderRadius: '6px',
-                                        fontSize: '14px',
-                                        backgroundColor: '#333',
-                                        color: '#fff',
-                                        outline: 'none'
-                                    }}
-                                />
-                            </div>
-                            <div>
-                                <span style={{
-                                    marginRight: '8px',
-                                    fontWeight: '500',
-                                    color: '#e0e0e0'
-                                }}>По:</span>
-                                <input
-                                    type="date"
-                                    value={toDate}
-                                    onChange={e => setToDate(e.target.value)}
-                                    style={{
-                                        padding: '10px',
-                                        border: '1px solid #555',
-                                        borderRadius: '6px',
-                                        fontSize: '14px',
-                                        backgroundColor: '#333',
-                                        color: '#fff',
-                                        outline: 'none'
-                                    }}
-                                />
-                            </div>
-                            <button
-                                onClick={() => setSortAsc(!sortAsc)}
-                                style={{
-                                    padding: "10px 20px",
-                                    backgroundColor: '#28a745',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                    fontSize: '14px',
-                                    fontWeight: '500',
-                                    transition: 'all 0.3s'
-                                }}
-                                onMouseOver={(e) => e.target.style.backgroundColor = '#218838'}
-                                onMouseOut={(e) => e.target.style.backgroundColor = '#28a745'}
-                            >
-                                {sortAsc ? '📅 Новіші зверху' : '📅 Старші зверху'}
-                            </button>
+                {/* Список накладних */}
+                <div style={{ backgroundColor: '#2d2d2d', padding: '25px', borderRadius: '12px', border: '1px solid #404040' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+                        <h2 style={{ color: '#ffffff', margin: 0, fontSize: '1.5rem' }}>Всі накладні</h2>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
+                            <div><span style={{ marginRight: '8px', color: '#e0e0e0' }}>Від:</span><input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} style={s.input} /></div>
+                            <div><span style={{ marginRight: '8px', color: '#e0e0e0' }}>По:</span><input type="date" value={toDate} onChange={e => setToDate(e.target.value)} style={s.input} /></div>
+                            <button onClick={() => setSortAsc(!sortAsc)} style={s.btn('#28a745')}>{sortAsc ? '📅 Новіші зверху' : '📅 Старші зверху'}</button>
                         </div>
                     </div>
 
                     {filteredInvoices.length > 0 ? (
                         <>
-                            <div style={{
-                                overflowX: 'auto',
-                                borderRadius: '8px',
-                                border: '1px solid #404040'
-                            }}>
-                                <table width="100%" cellPadding="12" style={{
-                                    borderCollapse: 'collapse',
-                                    backgroundColor: '#242424',
-                                    minWidth: '800px'
-                                }}>
+                            <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #404040' }}>
+                                <table width="100%" cellPadding="12" style={{ borderCollapse: 'collapse', backgroundColor: '#242424', minWidth: '700px' }}>
                                     <thead>
                                         <tr style={{ backgroundColor: '#333333' }}>
-                                            <th style={{
-                                                padding: '15px',
-                                                textAlign: 'left',
-                                                borderBottom: '2px solid #404040',
-                                                color: '#ffffff',
-                                                fontWeight: '600'
-                                            }}>№</th>
-                                            <th style={{
-                                                padding: '15px',
-                                                textAlign: 'left',
-                                                borderBottom: '2px solid #404040',
-                                                borderBottom: '2px solid #404040',
-                                                color: '#ffffff',
-                                                fontWeight: '600'
-                                            }}>Дата</th>
-                                            <th style={{
-                                                padding: '15px',
-                                                textAlign: 'left',
-                                                borderBottom: '2px solid #404040',
-                                                color: '#ffffff',
-                                                fontWeight: '600'
-                                            }}>Сума</th>
-                                            <th style={{
-                                                padding: '15px',
-                                                textAlign: 'left',
-                                                borderBottom: '2px solid #404040',
-                                                color: '#ffffff',
-                                                fontWeight: '600'
-                                            }}>Позицій</th>
-                                            <th style={{
-                                                padding: '15px',
-                                                textAlign: 'left',
-                                                borderBottom: '2px solid #404040',
-                                                color: '#ffffff',
-                                                fontWeight: '600'
-                                            }}>Дії</th>
+                                            {['№', 'Дата', 'Сума', 'Позицій', 'Дії'].map(h => (
+                                                <th key={h} style={{ padding: '15px', textAlign: 'left', borderBottom: '2px solid #404040', color: '#ffffff', fontWeight: '600' }}>{h}</th>
+                                            ))}
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {filteredInvoices.map(inv => (
-                                            <tr key={inv.id} style={{
-                                                borderBottom: '1px solid #404040',
-                                                transition: 'background-color 0.2s'
-                                            }}
-                                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2d2d2d'}
-                                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#242424'}
-                                            >
-                                                <td style={{
-                                                    padding: '15px',
-                                                    fontWeight: 'bold',
-                                                    color: '#ffffff',
-                                                    fontSize: '16px'
-                                                }}>{inv.id}</td>
-                                                <td style={{
-                                                    padding: '15px',
-                                                    color: '#e0e0e0'
-                                                }}>
-                                                    {inv.created_at ? new Date(inv.created_at).toLocaleString('uk-UA') : 'Немає дати'}
-                                                </td>
-                                                <td style={{
-                                                    padding: '15px',
-                                                    fontWeight: 'bold',
-                                                    color: '#28a745',
-                                                    fontSize: '16px'
-                                                }}>
-                                                    {/* Перевіряємо, чи є в накладній чорний метал */}
-                                                    {inv.items && inv.items.some(item => item.name === "Чорний метал")
-                                                        ? `${Math.floor(inv.total || 0)} грн`  // Якщо є чорний метал - округлюємо
-                                                        : `${inv.total || 0} грн`              // Якщо немає - залишаємо як є
-                                                    }
-                                                </td>
+                                            <tr key={inv.id} style={{ borderBottom: '1px solid #404040' }}
+                                                onMouseOver={e => e.currentTarget.style.backgroundColor = '#2d2d2d'}
+                                                onMouseOut={e => e.currentTarget.style.backgroundColor = '#242424'}>
+                                                <td style={{ padding: '15px', fontWeight: 'bold', color: '#ffffff', fontSize: '16px' }}>{inv.id}</td>
+                                                <td style={{ padding: '15px', color: '#e0e0e0' }}>{inv.created_at ? new Date(inv.created_at).toLocaleString('uk-UA') : '—'}</td>
+                                                <td style={{ padding: '15px', fontWeight: 'bold', color: '#28a745', fontSize: '16px' }}>{Math.floor(inv.total || 0)} грн</td>
                                                 <td style={{ padding: '15px', textAlign: 'center' }}>
-                                                    <span style={{
-                                                        display: 'inline-block',
-                                                        backgroundColor: '#333',
-                                                        color: '#ffffff',
-                                                        padding: '5px 12px',
-                                                        borderRadius: '20px',
-                                                        fontSize: '13px',
-                                                        fontWeight: 'bold',
-                                                        minWidth: '40px'
-                                                    }}>
+                                                    <span style={{ backgroundColor: '#333', color: '#fff', padding: '5px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold' }}>
                                                         {inv.items ? inv.items.length : 0}
                                                     </span>
                                                 </td>
                                                 <td style={{ padding: '15px' }}>
-                                                    <div style={{
-                                                        display: 'flex',
-                                                        gap: '10px',
-                                                        flexWrap: 'wrap'
-                                                    }}>
-                                                        <button
-                                                            onClick={() => viewReceipt(inv)}
-                                                            style={{
-                                                                padding: "8px 16px",
-                                                                backgroundColor: '#17a2b8',
-                                                                color: 'white',
-                                                                border: 'none',
-                                                                borderRadius: '6px',
-                                                                cursor: 'pointer',
-                                                                fontSize: '13px',
-                                                                fontWeight: '500',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '6px',
-                                                                transition: 'all 0.3s'
-                                                            }}
-                                                            onMouseOver={(e) => e.target.style.backgroundColor = '#138496'}
-                                                            onMouseOut={(e) => e.target.style.backgroundColor = '#17a2b8'}
-                                                        >
-                                                            👁️ Перегляд
-                                                        </button>
-                                                        <button
-                                                            onClick={() => printToReceiptPrinter(inv)}
-                                                            style={{
-                                                                padding: "8px 16px",
-                                                                backgroundColor: '#28a745',
-                                                                color: 'white',
-                                                                border: 'none',
-                                                                borderRadius: '6px',
-                                                                cursor: 'pointer',
-                                                                fontSize: '13px',
-                                                                fontWeight: '500',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '6px',
-                                                                transition: 'all 0.3s'
-                                                            }}
-                                                            onMouseOver={(e) => e.target.style.backgroundColor = '#218838'}
-                                                            onMouseOut={(e) => e.target.style.backgroundColor = '#28a745'}
-                                                        >
-                                                            🖨️ Друк
-                                                        </button>
-                                                        <button
-                                                            onClick={() => deleteInvoice(inv.id)}
-                                                            style={{
-                                                                padding: "8px 16px",
-                                                                backgroundColor: '#dc3545',
-                                                                color: 'white',
-                                                                border: 'none',
-                                                                borderRadius: '6px',
-                                                                cursor: 'pointer',
-                                                                fontSize: '13px',
-                                                                fontWeight: '500',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '6px',
-                                                                transition: 'all 0.3s'
-                                                            }}
-                                                            onMouseOver={(e) => e.target.style.backgroundColor = '#c82333'}
-                                                            onMouseOut={(e) => e.target.style.backgroundColor = '#dc3545'}
-                                                        >
-                                                            🗑️ Видалити
-                                                        </button>
+                                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                        <button onClick={() => viewReceipt(inv)} style={s.btn('#17a2b8')}>👁️ Перегляд</button>
+                                                        <button onClick={() => printToReceiptPrinter(inv)} style={s.btn('#28a745')}>🖨️ Друк</button>
+                                                        <button onClick={() => deleteInvoice(inv.id)} style={s.btn('#dc3545')}>🗑️ Видалити</button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -2995,417 +803,80 @@ ${receiptText}
                                     </tbody>
                                 </table>
                             </div>
-
-                            {filteredInvoices.length > 0 && (
-                                <div style={{
-                                    marginTop: '25px',
-                                    backgroundColor: '#333',
-                                    padding: '20px',
-                                    borderRadius: '8px',
-                                    border: '1px solid #404040',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    flexWrap: 'wrap',
-                                    gap: '15px'
-                                }}>
-                                    <div>
-                                        <div style={{
-                                            color: '#ffffff',
-                                            fontSize: '1.1rem',
-                                            fontWeight: '600',
-                                            marginBottom: '5px'
-                                        }}>
-                                            Загальна сума за період:
-                                        </div>
-                                        <div style={{
-                                            color: '#28a745',
-                                            fontSize: '1.8rem',
-                                            fontWeight: 'bold'
-                                        }}>
-                                            {/* Перевіряємо, чи є в накладних чорний метал */}
-                                            {filteredInvoices.some(inv => inv.items && inv.items.some(item => item.name === "Чорний метал"))
-                                                ? `${Math.floor(totalFiltered)} грн`
-                                                : `${totalFiltered} грн`
-                                            }
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div style={{
-                                            color: '#ffffff',
-                                            fontSize: '1.1rem',
-                                            fontWeight: '600',
-                                            marginBottom: '5px'
-                                        }}>
-                                            Кількість накладних:
-                                        </div>
-                                        <div style={{
-                                            color: '#dc3545',
-                                            fontSize: '1.8rem',
-                                            fontWeight: 'bold'
-                                        }}>
-                                            {filteredInvoices.length}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div style={{
-                                            color: '#ffffff',
-                                            fontSize: '1.1rem',
-                                            fontWeight: '600',
-                                            marginBottom: '5px'
-                                        }}>
-                                            Загальна кількість позицій:
-                                        </div>
-                                        <div style={{
-                                            color: '#17a2b8',
-                                            fontSize: '1.8rem',
-                                            fontWeight: 'bold'
-                                        }}>
-                                            {filteredInvoices.reduce((sum, inv) => sum + (inv.items ? inv.items.length : 0), 0)}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                            <div style={{ marginTop: '25px', backgroundColor: '#333', padding: '20px', borderRadius: '8px', border: '1px solid #404040', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px' }}>
+                                <div><div style={{ color: '#fff', fontWeight: '600' }}>Загальна сума:</div><div style={{ color: '#28a745', fontSize: '1.8rem', fontWeight: 'bold' }}>{Math.floor(totalFiltered)} грн</div></div>
+                                <div><div style={{ color: '#fff', fontWeight: '600' }}>Накладних:</div><div style={{ color: '#dc3545', fontSize: '1.8rem', fontWeight: 'bold' }}>{filteredInvoices.length}</div></div>
+                                <div><div style={{ color: '#fff', fontWeight: '600' }}>Позицій всього:</div><div style={{ color: '#17a2b8', fontSize: '1.8rem', fontWeight: 'bold' }}>{filteredInvoices.reduce((sum, inv) => sum + (inv.items ? inv.items.length : 0), 0)}</div></div>
+                            </div>
                         </>
                     ) : (
-                        <div style={{
-                            textAlign: 'center',
-                            padding: '60px 20px',
-                            color: '#aaa',
-                            backgroundColor: '#242424',
-                            borderRadius: '8px',
-                            marginTop: '20px',
-                            border: '2px dashed #404040'
-                        }}>
-                            <div style={{
-                                fontSize: '64px',
-                                marginBottom: '20px',
-                                opacity: '0.5'
-                            }}>📄</div>
-                            <h3 style={{
-                                margin: '0 0 15px 0',
-                                color: '#ffffff',
-                                fontSize: '1.5rem'
-                            }}>Немає накладних</h3>
-                            <p style={{
-                                margin: '0',
-                                fontSize: '1rem',
-                                maxWidth: '400px',
-                                marginInline: 'auto'
-                            }}>
-                                {fromDate || toDate
-                                    ? 'За обраний період накладні не знайдено. Спробуйте змінити дати.'
-                                    : 'Створіть першу накладну, щоб розпочати роботу.'}
-                            </p>
+                        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#aaa', backgroundColor: '#242424', borderRadius: '8px', border: '2px dashed #404040' }}>
+                            <div style={{ fontSize: '64px', marginBottom: '20px', opacity: 0.5 }}>📄</div>
+                            <h3 style={{ color: '#ffffff', fontSize: '1.5rem' }}>Немає накладних</h3>
+                            <p>{fromDate || toDate ? 'За обраний період не знайдено.' : 'Створіть першу накладну.'}</p>
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Адмін панель для зміни цін та засмічення */}
+            {/* Адмін-панель */}
             {showAdminPanel && isAdminAuthenticated && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.95)',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    zIndex: 2000,
-                    padding: '20px',
-                    overflow: 'auto'
-                }}>
-                    <div style={{
-                        backgroundColor: '#2d2d2d',
-                        borderRadius: '12px',
-                        width: '100%',
-                        maxWidth: '1400px',
-                        maxHeight: '90vh',
-                        overflow: 'hidden',
-                        position: 'relative',
-                        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-                        border: '2px solid #404040',
-                        display: 'flex',
-                        flexDirection: 'column'
-                    }}>
-                        <div style={{
-                            backgroundColor: '#333',
-                            padding: '20px',
-                            borderBottom: '2px solid #404040',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            flexShrink: 0
-                        }}>
-                            <h3 style={{
-                                margin: 0,
-                                color: '#ffffff',
-                                fontSize: '1.5rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px'
-                            }}>
-                                ⚙️ Адмін-панель - Зміна цін та засмічення
-                            </h3>
-                            <button
-                                onClick={() => {
-                                    setShowAdminPanel(false);
-                                    setIsAdminAuthenticated(false);
-                                }}
-                                style={{
-                                    padding: '10px 20px',
-                                    backgroundColor: '#dc3545',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                    fontSize: '14px',
-                                    fontWeight: '500',
-                                    transition: 'all 0.3s'
-                                }}
-                                onMouseOver={(e) => e.target.style.backgroundColor = '#c82333'}
-                                onMouseOut={(e) => e.target.style.backgroundColor = '#dc3545'}
-                            >
-                                ✕ Закрити
-                            </button>
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000, padding: '20px', overflow: 'auto' }}>
+                    <div style={{ backgroundColor: '#2d2d2d', borderRadius: '12px', width: '100%', maxWidth: '1400px', maxHeight: '90vh', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', border: '2px solid #404040', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ backgroundColor: '#333', padding: '20px', borderBottom: '2px solid #404040', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                            <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>⚙️ Адмін-панель — Ціни та засмічення</h3>
+                            <button onClick={() => { setShowAdminPanel(false); setIsAdminAuthenticated(false); }} style={s.btn('#dc3545')}>✕ Закрити</button>
                         </div>
 
-                        <div style={{
-                            padding: '25px',
-                            overflowY: 'auto',
-                            flex: 1
-                        }}>
-                            <div style={{
-                                backgroundColor: '#242424',
-                                padding: '20px',
-                                borderRadius: '8px',
-                                marginBottom: '20px',
-                                border: '1px solid #404040'
-                            }}>
-                                <h4 style={{
-                                    color: '#ffffff',
-                                    marginBottom: '15px',
-                                    fontSize: '1.2rem'
-                                }}>
-                                    📝 Інструкція:
-                                </h4>
-                                <ul style={{
-                                    color: '#e0e0e0',
-                                    margin: 0,
-                                    paddingLeft: '20px',
-                                    lineHeight: '1.6'
-                                }}>
-                                    <li>Змініть ціну або відсоток засмічення для кожного металу у відповідних полях</li>
-                                    <li>Натисніть "💾 Зберегти" для кожного металу окремо для постійного збереження</li>
-                                    <li>Для масового збереження змін засмічення використовуйте кнопки внизу</li>
-                                    <li>💡 <strong>Всі дані зберігаються в браузері та на сервері</strong></li>
-                                </ul>
+                        <div style={{ padding: '25px', overflowY: 'auto', flex: 1 }}>
+                            <div style={{ backgroundColor: '#1a3a1a', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #28a745', color: '#e0e0e0' }}>
+                                🟢 <strong>Ціни зберігаються на сервері</strong> — зміни відразу видно на всіх пристроях після натискання "Зберегти".
                             </div>
 
-                            <div style={{
-                                overflowX: 'auto',
-                                marginBottom: '25px',
-                                borderRadius: '8px',
-                                border: '1px solid #404040'
-                            }}>
-                                <table width="100%" cellPadding="15" style={{
-                                    borderCollapse: 'collapse',
-                                    backgroundColor: '#242424',
-                                    minWidth: '1400px'
-                                }}>
-                                    <thead style={{
-                                        position: 'sticky',
-                                        top: 0,
-                                        backgroundColor: '#333333',
-                                        zIndex: 10
-                                    }}>
-                                        <tr style={{ backgroundColor: '#333333' }}>
-                                            <th style={{
-                                                padding: '15px',
-                                                textAlign: 'left',
-                                                borderBottom: '2px solid #404040',
-                                                color: '#ffffff',
-                                                fontWeight: '600'
-                                            }}>Метал</th>
-                                            <th style={{
-                                                padding: '15px',
-                                                textAlign: 'left',
-                                                borderBottom: '2px solid #404040',
-                                                color: '#ffffff',
-                                                fontWeight: '600'
-                                            }}>Засмічення (%)</th>
-                                            <th style={{
-                                                padding: '15px',
-                                                textAlign: 'left',
-                                                borderBottom: '2px solid #404040',
-                                                color: '#ffffff',
-                                                fontWeight: '600'
-                                            }}>Стандартна ціна</th>
-                                            <th style={{
-                                                padding: '15px',
-                                                textAlign: 'left',
-                                                borderBottom: '2px solid #404040',
-                                                color: '#ffffff',
-                                                fontWeight: '600'
-                                            }}>Поточна ціна</th>
-                                            <th style={{
-                                                padding: '15px',
-                                                textAlign: 'left',
-                                                borderBottom: '2px solid #404040',
-                                                color: '#ffffff',
-                                                fontWeight: '600'
-                                            }}>Приклад ваги з засм.</th>
-                                            <th style={{
-                                                padding: '15px',
-                                                textAlign: 'left',
-                                                borderBottom: '2px solid #404040',
-                                                color: '#ffffff',
-                                                fontWeight: '600'
-                                            }}>Нова ціна</th>
-                                            <th style={{
-                                                padding: '15px',
-                                                textAlign: 'left',
-                                                borderBottom: '2px solid #404040',
-                                                color: '#ffffff',
-                                                fontWeight: '600'
-                                            }}>Дія</th>
+                            <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #404040', marginBottom: '25px' }}>
+                                <table width="100%" cellPadding="15" style={{ borderCollapse: 'collapse', backgroundColor: '#242424', minWidth: '900px' }}>
+                                    <thead style={{ position: 'sticky', top: 0, backgroundColor: '#333333', zIndex: 10 }}>
+                                        <tr>
+                                            {['Метал', 'Засмічення (%)', 'Приклад 100кг', 'Поточна ціна', 'Нова ціна', 'Дія'].map(h => (
+                                                <th key={h} style={{ padding: '15px', textAlign: 'left', borderBottom: '2px solid #404040', color: '#ffffff', fontWeight: '600' }}>{h}</th>
+                                            ))}
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {metalPrices.map(metal => {
                                             const hasPriceChanged = tempPrices[metal.id] !== undefined;
-                                            const isPriceSaved = metal.price === (metal.defaultPrice || initialTestMetals.find(m => m.id === metal.id)?.price);
                                             const currentRate = contaminationRates[metal.name] || 0;
                                             const tempRate = tempContamination[metal.name];
                                             const hasContaminationChanged = tempRate !== undefined && tempRate !== currentRate;
-
-                                            // Приклад ваги з засміченням (для 100 кг)
-                                            const exampleWeight = 100;
-                                            const exampleWeightWithCont = roundWeightWithContamination(exampleWeight, tempRate !== undefined ? tempRate : currentRate);
-
+                                            const displayRate = tempRate !== undefined ? tempRate : currentRate;
+                                            const exampleWeightWithCont = roundWeightWithContamination(100, displayRate);
                                             return (
-                                                <tr key={metal.id} style={{
-                                                    borderBottom: '1px solid #404040',
-                                                    backgroundColor: (hasPriceChanged || hasContaminationChanged) ? '#2a2a2a' : '#242424',
-                                                    transition: 'background-color 0.2s'
-                                                }}
-                                                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2d2d2d'}
-                                                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = (hasPriceChanged || hasContaminationChanged) ? '#2a2a2a' : '#242424'}
-                                                >
-                                                    <td style={{
-                                                        padding: '15px',
-                                                        color: '#ffffff',
-                                                        fontWeight: '500',
-                                                        fontSize: '15px'
-                                                    }}>
-                                                        {metal.name}
-                                                    </td>
+                                                <tr key={metal.id} style={{ borderBottom: '1px solid #404040', backgroundColor: (hasPriceChanged || hasContaminationChanged) ? '#2a2a2a' : '#242424' }}
+                                                    onMouseOver={e => e.currentTarget.style.backgroundColor = '#2d2d2d'}
+                                                    onMouseOut={e => e.currentTarget.style.backgroundColor = (hasPriceChanged || hasContaminationChanged) ? '#2a2a2a' : '#242424'}>
+                                                    <td style={{ padding: '15px', color: '#ffffff', fontWeight: '500' }}>{metal.name}</td>
                                                     <td style={{ padding: '15px' }}>
-                                                        <input
-                                                            type="number"
-                                                            step="0.1"
-                                                            min="0"
-                                                            max="100"
-                                                            value={tempRate !== undefined ? tempRate : currentRate}
-                                                            onChange={(e) => {
-                                                                const newRate = parseFloat(e.target.value) || 0;
-                                                                updateTempContamination(metal.name, newRate);
-                                                            }}
-                                                            style={{
-                                                                width: '80px',
-                                                                padding: '12px',
-                                                                border: `2px solid ${hasContaminationChanged ? '#ffc107' : '#555'}`,
-                                                                borderRadius: '6px',
-                                                                fontSize: '15px',
-                                                                backgroundColor: hasContaminationChanged ? '#3a3a3a' : '#333',
-                                                                color: '#fff',
-                                                                outline: 'none',
-                                                                fontWeight: 'bold'
-                                                            }}
-                                                        />
+                                                        <input type="number" step="0.1" min="0" max="100" value={displayRate}
+                                                            onChange={e => updateTempContamination(metal.name, parseFloat(e.target.value) || 0)}
+                                                            style={{ ...s.input, width: '80px', border: `2px solid ${hasContaminationChanged ? '#ffc107' : '#555'}`, fontWeight: 'bold' }} />
                                                     </td>
-                                                    <td style={{
-                                                        padding: '15px',
-                                                        color: '#6c757d',
-                                                        fontWeight: '500',
-                                                        fontSize: '15px',
-                                                        textDecoration: 'line-through'
-                                                    }}>
-                                                        {metal.defaultPrice || initialTestMetals.find(m => m.id === metal.id)?.price} грн
-                                                    </td>
-                                                    <td style={{
-                                                        padding: '15px',
-                                                        color: isPriceSaved ? '#6c757d' : '#28a745',
-                                                        fontWeight: 'bold',
-                                                        fontSize: '16px'
-                                                    }}>
-                                                        {metal.price} грн
-                                                    </td>
-                                                    <td style={{
-                                                        padding: '15px',
-                                                        color: '#28a745',
-                                                        fontWeight: 'bold',
-                                                        fontSize: '16px'
-                                                    }}>
-                                                        100 кг → {exampleWeightWithCont.toFixed(2)} кг
-                                                    </td>
+                                                    <td style={{ padding: '15px', color: '#28a745', fontWeight: 'bold' }}>→ {exampleWeightWithCont.toFixed(2)} кг</td>
+                                                    <td style={{ padding: '15px', color: '#e0e0e0', fontWeight: 'bold', fontSize: '16px' }}>{metal.initialPrice} грн</td>
                                                     <td style={{ padding: '15px' }}>
-                                                        <input
-                                                            type="number"
-                                                            step="0.01"
-                                                            min="0"
-                                                            value={metal.price}
-                                                            onChange={(e) => {
-                                                                const newPrice = Number(e.target.value);
-                                                                updateTempPrice(metal.id, newPrice);
-                                                            }}
-                                                            style={{
-                                                                width: '120px',
-                                                                padding: '12px',
-                                                                border: `2px solid ${hasPriceChanged ? '#ffc107' : '#555'}`,
-                                                                borderRadius: '6px',
-                                                                fontSize: '15px',
-                                                                backgroundColor: hasPriceChanged ? '#3a3a3a' : '#333',
-                                                                color: '#fff',
-                                                                outline: 'none',
-                                                                fontWeight: 'bold'
-                                                            }}
-                                                        />
+                                                        <input type="number" step="0.01" min="0" value={metal.price}
+                                                            onChange={e => updateTempPrice(metal.id, Number(e.target.value))}
+                                                            style={{ ...s.input, width: '120px', border: `2px solid ${hasPriceChanged ? '#ffc107' : '#555'}`, fontWeight: 'bold' }} />
                                                     </td>
                                                     <td style={{ padding: '15px' }}>
                                                         <button
                                                             onClick={() => {
-                                                                updateMetalPrice(metal.id, metal.price, metal.name);
-                                                                if (tempRate !== undefined) {
-                                                                    updateContaminationRate(metal.name, tempRate);
-                                                                }
+                                                                if (hasPriceChanged) updateMetalPrice(metal.id, metal.price, metal.name);
+                                                                if (hasContaminationChanged) updateContaminationRate(metal.name, tempRate);
+                                                                if (hasContaminationChanged) setTempContamination(prev => { const n = { ...prev }; delete n[metal.name]; return n; });
                                                             }}
                                                             disabled={isSavingPrice || (!hasPriceChanged && !hasContaminationChanged)}
-                                                            style={{
-                                                                padding: "10px 20px",
-                                                                backgroundColor: isSavingPrice || (!hasPriceChanged && !hasContaminationChanged) ? '#6c757d' : '#28a745',
-                                                                color: 'white',
-                                                                border: 'none',
-                                                                borderRadius: '6px',
-                                                                cursor: isSavingPrice || (!hasPriceChanged && !hasContaminationChanged) ? 'not-allowed' : 'pointer',
-                                                                fontSize: '14px',
-                                                                fontWeight: '500',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '6px',
-                                                                transition: 'all 0.3s'
-                                                            }}
-                                                            onMouseOver={(e) => {
-                                                                if (!isSavingPrice && (hasPriceChanged || hasContaminationChanged)) e.target.style.backgroundColor = '#218838';
-                                                            }}
-                                                            onMouseOut={(e) => {
-                                                                if (!isSavingPrice && (hasPriceChanged || hasContaminationChanged)) e.target.style.backgroundColor = '#28a745';
-                                                            }}
-                                                        >
-                                                            {isPriceSaved && !hasContaminationChanged ? '✅ Збережено' : '💾 Зберегти'}
+                                                            style={{ ...s.btn(isSavingPrice || (!hasPriceChanged && !hasContaminationChanged) ? '#6c757d' : '#28a745'), cursor: (!hasPriceChanged && !hasContaminationChanged) ? 'not-allowed' : 'pointer' }}>
+                                                            {(!hasPriceChanged && !hasContaminationChanged) ? '✅ Збережено' : '💾 Зберегти'}
                                                         </button>
                                                     </td>
                                                 </tr>
@@ -3415,398 +886,49 @@ ${receiptText}
                                 </table>
                             </div>
 
-                            <div style={{
-                                display: 'flex',
-                                gap: '15px',
-                                justifyContent: 'center',
-                                flexWrap: 'wrap',
-                                marginTop: '30px'
-                            }}>
-                                <button
-                                    onClick={updateAllPrices}
-                                    disabled={isSavingPrice || Object.keys(tempPrices).length === 0}
-                                    style={{
-                                        padding: "15px 30px",
-                                        backgroundColor: isSavingPrice || Object.keys(tempPrices).length === 0 ? '#6c757d' : '#007bff',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        cursor: isSavingPrice || Object.keys(tempPrices).length === 0 ? 'not-allowed' : 'pointer',
-                                        fontSize: '16px',
-                                        fontWeight: 'bold',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        transition: 'all 0.3s'
-                                    }}
-                                    onMouseOver={(e) => {
-                                        if (!isSavingPrice && Object.keys(tempPrices).length > 0) e.target.style.backgroundColor = '#0056b3';
-                                    }}
-                                    onMouseOut={(e) => {
-                                        if (!isSavingPrice && Object.keys(tempPrices).length > 0) e.target.style.backgroundColor = '#007bff';
-                                    }}
-                                >
-                                    💾 Зберегти всі зміни цін
+                            <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                <button onClick={updateAllPrices} disabled={isSavingPrice || Object.keys(tempPrices).length === 0}
+                                    style={{ ...s.btn(Object.keys(tempPrices).length === 0 ? '#6c757d' : '#007bff'), padding: '15px 30px', fontSize: '16px', fontWeight: 'bold' }}>
+                                    💾 Зберегти всі ціни
                                 </button>
-
-                                <button
-                                    onClick={saveAllContaminationChanges}
-                                    disabled={isSavingPrice || Object.keys(tempContamination).length === 0}
-                                    style={{
-                                        padding: "15px 30px",
-                                        backgroundColor: isSavingPrice || Object.keys(tempContamination).length === 0 ? '#6c757d' : '#ffc107',
-                                        color: 'black',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        cursor: isSavingPrice || Object.keys(tempContamination).length === 0 ? 'not-allowed' : 'pointer',
-                                        fontSize: '16px',
-                                        fontWeight: 'bold',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        transition: 'all 0.3s'
-                                    }}
-                                    onMouseOver={(e) => {
-                                        if (!isSavingPrice && Object.keys(tempContamination).length > 0) e.target.style.backgroundColor = '#e0a800';
-                                    }}
-                                    onMouseOut={(e) => {
-                                        if (!isSavingPrice && Object.keys(tempContamination).length > 0) e.target.style.backgroundColor = '#ffc107';
-                                    }}
-                                >
-                                    💾 Зберегти всі зміни засмічення
+                                <button onClick={saveAllContaminationChanges} disabled={isSavingPrice || Object.keys(tempContamination).length === 0}
+                                    style={{ ...s.btn(Object.keys(tempContamination).length === 0 ? '#6c757d' : '#ffc107'), padding: '15px 30px', fontSize: '16px', fontWeight: 'bold' }}>
+                                    💾 Зберегти все засмічення
                                 </button>
-
-                                <button
-                                    onClick={cancelAllPriceChanges}
-                                    disabled={isSavingPrice || Object.keys(tempPrices).length === 0}
-                                    style={{
-                                        padding: "15px 30px",
-                                        backgroundColor: isSavingPrice || Object.keys(tempPrices).length === 0 ? '#6c757d' : '#17a2b8',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        cursor: isSavingPrice || Object.keys(tempPrices).length === 0 ? 'not-allowed' : 'pointer',
-                                        fontSize: '16px',
-                                        fontWeight: 'bold',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        transition: 'all 0.3s'
-                                    }}
-                                    onMouseOver={(e) => {
-                                        if (!isSavingPrice && Object.keys(tempPrices).length > 0) e.target.style.backgroundColor = '#138496';
-                                    }}
-                                    onMouseOut={(e) => {
-                                        if (!isSavingPrice && Object.keys(tempPrices).length > 0) e.target.style.backgroundColor = '#17a2b8';
-                                    }}
-                                >
+                                <button onClick={cancelAllPriceChanges} disabled={Object.keys(tempPrices).length === 0}
+                                    style={{ ...s.btn(Object.keys(tempPrices).length === 0 ? '#6c757d' : '#17a2b8'), padding: '15px 30px', fontSize: '16px', fontWeight: 'bold' }}>
                                     ❌ Скасувати зміни цін
                                 </button>
-
-                                <button
-                                    onClick={cancelContaminationChanges}
-                                    disabled={isSavingPrice || Object.keys(tempContamination).length === 0}
-                                    style={{
-                                        padding: "15px 30px",
-                                        backgroundColor: isSavingPrice || Object.keys(tempContamination).length === 0 ? '#6c757d' : '#dc3545',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        cursor: isSavingPrice || Object.keys(tempContamination).length === 0 ? 'not-allowed' : 'pointer',
-                                        fontSize: '16px',
-                                        fontWeight: 'bold',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        transition: 'all 0.3s'
-                                    }}
-                                    onMouseOver={(e) => {
-                                        if (!isSavingPrice && Object.keys(tempContamination).length > 0) e.target.style.backgroundColor = '#c82333';
-                                    }}
-                                    onMouseOut={(e) => {
-                                        if (!isSavingPrice && Object.keys(tempContamination).length > 0) e.target.style.backgroundColor = '#dc3545';
-                                    }}
-                                >
+                                <button onClick={cancelContaminationChanges} disabled={Object.keys(tempContamination).length === 0}
+                                    style={{ ...s.btn(Object.keys(tempContamination).length === 0 ? '#6c757d' : '#dc3545'), padding: '15px 30px', fontSize: '16px', fontWeight: 'bold' }}>
                                     ❌ Скасувати зміни засмічення
                                 </button>
-
-                                <button
-                                    onClick={resetToDefaultPrices}
-                                    disabled={isSavingPrice}
-                                    style={{
-                                        padding: "15px 30px",
-                                        backgroundColor: isSavingPrice ? '#6c757d' : '#6f42c1',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        cursor: isSavingPrice ? 'not-allowed' : 'pointer',
-                                        fontSize: '16px',
-                                        fontWeight: 'bold',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        transition: 'all 0.3s'
-                                    }}
-                                    onMouseOver={(e) => {
-                                        if (!isSavingPrice) e.target.style.backgroundColor = '#5a32a3';
-                                    }}
-                                    onMouseOut={(e) => {
-                                        if (!isSavingPrice) e.target.style.backgroundColor = '#6f42c1';
-                                    }}
-                                >
-                                    🔄 Скинути до стандартних
+                                <button onClick={resetToDefaultPrices} disabled={isSavingPrice}
+                                    style={{ ...s.btn('#6f42c1'), padding: '15px 30px', fontSize: '16px', fontWeight: 'bold' }}>
+                                    🔄 Оновити з сервера
                                 </button>
-                            </div>
-
-                            <div style={{
-                                marginTop: '30px',
-                                padding: '20px',
-                                backgroundColor: '#333',
-                                borderRadius: '8px',
-                                border: '1px solid #404040'
-                            }}>
-                                <h4 style={{
-                                    color: '#ffffff',
-                                    marginBottom: '10px',
-                                    fontSize: '1.1rem'
-                                }}>
-                                    📊 Статистика:
-                                </h4>
-                                <div style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                                    gap: '15px'
-                                }}>
-                                    <div style={{
-                                        backgroundColor: '#242424',
-                                        padding: '15px',
-                                        borderRadius: '6px',
-                                        border: '1px solid #404040'
-                                    }}>
-                                        <div style={{
-                                            color: '#aaa',
-                                            fontSize: '0.9rem',
-                                            marginBottom: '5px'
-                                        }}>
-                                            Кількість металів:
-                                        </div>
-                                        <div style={{
-                                            color: '#ffffff',
-                                            fontSize: '1.8rem',
-                                            fontWeight: 'bold'
-                                        }}>
-                                            {metalPrices.length}
-                                        </div>
-                                    </div>
-                                    <div style={{
-                                        backgroundColor: '#242424',
-                                        padding: '15px',
-                                        borderRadius: '6px',
-                                        border: '1px solid #404040'
-                                    }}>
-                                        <div style={{
-                                            color: '#aaa',
-                                            fontSize: '0.9rem',
-                                            marginBottom: '5px'
-                                        }}>
-                                            Змінено цін:
-                                        </div>
-                                        <div style={{
-                                            color: '#ffc107',
-                                            fontSize: '1.8rem',
-                                            fontWeight: 'bold'
-                                        }}>
-                                            {Object.keys(tempPrices).length}
-                                        </div>
-                                    </div>
-                                    <div style={{
-                                        backgroundColor: '#242424',
-                                        padding: '15px',
-                                        borderRadius: '6px',
-                                        border: '1px solid #404040'
-                                    }}>
-                                        <div style={{
-                                            color: '#aaa',
-                                            fontSize: '0.9rem',
-                                            marginBottom: '5px'
-                                        }}>
-                                            Змінено засмічення:
-                                        </div>
-                                        <div style={{
-                                            color: '#17a2b8',
-                                            fontSize: '1.8rem',
-                                            fontWeight: 'bold'
-                                        }}>
-                                            {Object.keys(tempContamination).length}
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Модальне вікно для перегляду чеку */}
+            {/* Чек */}
             {printInvoice && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.85)',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    zIndex: 1000,
-                    padding: '20px'
-                }}>
-                    <div style={{
-                        backgroundColor: '#2d2d2d',
-                        borderRadius: '12px',
-                        width: '100%',
-                        maxWidth: '500px',
-                        maxHeight: '90vh',
-                        overflow: 'hidden',
-                        position: 'relative',
-                        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-                        border: '1px solid #404040'
-                    }}>
-                        <div style={{
-                            position: 'absolute',
-                            top: '15px',
-                            right: '15px',
-                            zIndex: 1001
-                        }}>
-                            <button
-                                onClick={closePrint}
-                                style={{
-                                    padding: '10px',
-                                    backgroundColor: '#dc3545',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '50%',
-                                    cursor: 'pointer',
-                                    width: '40px',
-                                    height: '40px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '20px',
-                                    boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
-                                    transition: 'all 0.3s'
-                                }}
-                                onMouseOver={(e) => e.target.style.backgroundColor = '#c82333'}
-                                onMouseOut={(e) => e.target.style.backgroundColor = '#dc3545'}
-                            >
-                                ×
-                            </button>
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '20px' }}>
+                    <div style={{ backgroundColor: '#2d2d2d', borderRadius: '12px', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', border: '1px solid #404040' }}>
+                        <div style={{ backgroundColor: '#333', padding: '20px', borderBottom: '1px solid #404040', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.3rem' }}>📄 Чек №{printInvoice.id || '---'}</h3>
+                            <button onClick={() => setPrintInvoice(null)} style={{ ...s.btn('#dc3545'), borderRadius: '50%', width: '40px', height: '40px', padding: 0, fontSize: '20px' }}>×</button>
                         </div>
-
-                        <div style={{
-                            backgroundColor: '#333',
-                            padding: '20px',
-                            borderBottom: '1px solid #404040'
-                        }}>
-                            <h3 style={{
-                                margin: '0',
-                                textAlign: 'center',
-                                color: '#ffffff',
-                                fontSize: '1.3rem'
-                            }}>
-                                📄 Чек №{printInvoice.id || '---'}
-                            </h3>
-                        </div>
-
-                        <div style={{
-                            padding: '30px',
-                            maxHeight: 'calc(90vh - 150px)',
-                            overflow: 'auto'
-                        }}>
-                            <div style={{
-                                fontFamily: "'Courier New', Courier, monospace",
-                                fontSize: '15px',
-                                lineHeight: '1.5',
-                                whiteSpace: 'pre',
-                                backgroundColor: '#242424',
-                                padding: '25px',
-                                borderRadius: '8px',
-                                border: '2px solid #404040',
-                                margin: '0 auto',
-                                color: '#e0e0e0',
-                                boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.2)',
-                                maxWidth: '400px'
-                            }}>
-                                {printInvoice.receiptText || "Немає даних для відображення"}
+                        <div style={{ padding: '30px', maxHeight: 'calc(90vh - 80px)', overflow: 'auto' }}>
+                            <div style={{ fontFamily: "'Courier New', monospace", fontSize: '15px', lineHeight: '1.5', whiteSpace: 'pre', backgroundColor: '#242424', padding: '25px', borderRadius: '8px', border: '2px solid #404040', color: '#e0e0e0', maxWidth: '400px', margin: '0 auto' }}>
+                                {printInvoice.receiptText || "Немає даних"}
                             </div>
-
-                            <div style={{
-                                marginTop: '25px',
-                                display: 'flex',
-                                justifyContent: 'center',
-                                gap: '12px',
-                                flexWrap: 'wrap'
-                            }}>
-                                <button
-                                    onClick={() => printToReceiptPrinter(printInvoice)}
-                                    style={{
-                                        padding: "12px 24px",
-                                        backgroundColor: '#28a745',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        cursor: 'pointer',
-                                        fontSize: '15px',
-                                        fontWeight: 'bold',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        transition: 'background-color 0.2s'
-                                    }}
-                                    onMouseOver={(e) => e.target.style.backgroundColor = '#218838'}
-                                    onMouseOut={(e) => e.target.style.backgroundColor = '#28a745'}
-                                >
-                                    <span>🖨️</span> Друкувати чек
-                                </button>
-                                <button
-                                    onClick={() => copyReceiptToClipboard(printInvoice)}
-                                    style={{
-                                        padding: "12px 24px",
-                                        backgroundColor: '#17a2b8',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        cursor: 'pointer',
-                                        fontSize: '15px',
-                                        fontWeight: 'bold',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        transition: 'background-color 0.2s'
-                                    }}
-                                    onMouseOver={(e) => e.target.style.backgroundColor = '#138496'}
-                                    onMouseOut={(e) => e.target.style.backgroundColor = '#17a2b8'}
-                                >
-                                    <span>📋</span> Копіювати текст
-                                </button>
-                                <button
-                                    onClick={closePrint}
-                                    style={{
-                                        padding: "12px 24px",
-                                        backgroundColor: '#6c757d',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        cursor: 'pointer',
-                                        fontSize: '15px',
-                                        transition: 'background-color 0.2s'
-                                    }}
-                                    onMouseOver={(e) => e.target.style.backgroundColor = '#5a6268'}
-                                    onMouseOut={(e) => e.target.style.backgroundColor = '#6c757d'}
-                                >
-                                    Закрити
-                                </button>
+                            <div style={{ marginTop: '25px', display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                <button onClick={() => printToReceiptPrinter(printInvoice)} style={{ ...s.btn('#28a745'), padding: '12px 24px', fontSize: '15px', fontWeight: 'bold' }}>🖨️ Друкувати</button>
+                                <button onClick={() => copyReceiptToClipboard(printInvoice)} style={{ ...s.btn('#17a2b8'), padding: '12px 24px', fontSize: '15px', fontWeight: 'bold' }}>📋 Копіювати</button>
+                                <button onClick={() => setPrintInvoice(null)} style={{ ...s.btn('#6c757d'), padding: '12px 24px', fontSize: '15px' }}>Закрити</button>
                             </div>
                         </div>
                     </div>

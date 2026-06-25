@@ -76,7 +76,7 @@ export default function App() {
 
     // ====== localStorage тільки для накладних (резервний кеш) ======
     const saveInvoicesToLocalStorage = useCallback((inv) => {
-        try { localStorage.setItem('invoices', JSON.stringify(inv)); } catch (e) {}
+        try { localStorage.setItem('invoices', JSON.stringify(inv)); } catch (e) { }
     }, []);
 
     const loadInvoicesFromLocalStorage = useCallback(() => {
@@ -548,7 +548,7 @@ export default function App() {
             const rate = (item.contaminationRate || 0).toString().padStart(3, ' ');
             const priceStr = Math.floor(item.price || 0).toString().padStart(4, ' ');
             const weightStr = (Number(item.weight) || 0).toFixed(1).padStart(4, ' ');
-            const weightWithContStr = (item.weightWithContamination || 0).toFixed(1).padStart(4, ' ');
+            const weightWithContStr = (Number(item.weightWithContamination) || 0).toFixed(1).padStart(4, ' ');
             const sumStr = (item.sum || 0).toString().padStart(4, ' ');
             receipt += `${name} ${rate} ${priceStr} ${weightStr} ${weightWithContStr} ${sumStr}\n`;
         });
@@ -606,7 +606,7 @@ export default function App() {
                 ta.value = receiptText;
                 ta.style.position = 'fixed'; ta.style.opacity = '0';
                 document.body.appendChild(ta); ta.select();
-                try { document.execCommand('copy'); alert("Скопійовано!"); } catch {}
+                try { document.execCommand('copy'); alert("Скопійовано!"); } catch { }
                 document.body.removeChild(ta);
             });
     };

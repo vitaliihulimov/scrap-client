@@ -69,15 +69,17 @@ const initDB = async () => {
                 invoice_id INTEGER,
                 metal_id INTEGER,
                 weight NUMERIC,
-                price INTEGER,
-                sum INTEGER
+                price NUMERIC,
+                sum NUMERIC,
+                contamination_rate NUMERIC DEFAULT 0,
+                weight_with_contamination NUMERIC DEFAULT 0
             );
         `);
 
-        // Додаємо колонку current_price якщо її ще нема (для існуючих БД)
-        await client.query(`
-            ALTER TABLE metals ADD COLUMN IF NOT EXISTS current_price NUMERIC NOT NULL DEFAULT 0;
-        `).catch(() => { }); // ігноруємо якщо вже є
+        // Додаємо колонки якщо їх ще нема (для існуючих БД)
+        await client.query(`ALTER TABLE metals ADD COLUMN IF NOT EXISTS current_price NUMERIC NOT NULL DEFAULT 0;`).catch(() => { });
+        await client.query(`ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS contamination_rate NUMERIC DEFAULT 0;`).catch(() => { });
+        await client.query(`ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS weight_with_contamination NUMERIC DEFAULT 0;`).catch(() => { });
 
         // Дефолтний користувач
         const userCount = await client.query("SELECT COUNT(*) as count FROM users");
@@ -283,7 +285,7 @@ app.post("/api/invoices", async (req, res) => {
     if (!items || items.length === 0) return res.status(400).json({ error: "Немає позицій" });
 
     const createdAt = new Date().toISOString();
-    const total = Math.floor(items.reduce((s, i) => s + (Number(i.weight) || 0) * i.price, 0));
+    const total = items.reduce((s, i) => s + (Number(i.sum) || 0), 0);
 
     try {
         const inv = await pool.query(
@@ -293,11 +295,14 @@ app.post("/api/invoices", async (req, res) => {
         const invoiceId = inv.rows[0].id;
 
         for (const i of items) {
-            const sum = Math.floor((Number(i.weight) || 0) * i.price);
-            if (sum > 0) {
+            const weight = Number(i.weight) || 0;
+            if (weight > 0) {
+                const contRate = Number(i.contaminationRate) || 0;
+                const weightWithCont = Number(i.weightWithContamination) || weight;
+                const sum = Number(i.sum) || Math.floor(weightWithCont * i.price);
                 await pool.query(
-                    "INSERT INTO invoice_items (invoice_id, metal_id, weight, price, sum) VALUES ($1, $2, $3, $4, $5)",
-                    [invoiceId, i.id, i.weight, i.price, sum]
+                    "INSERT INTO invoice_items (invoice_id, metal_id, weight, price, sum, contamination_rate, weight_with_contamination) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                    [invoiceId, i.id, weight, i.price, sum, contRate, weightWithCont]
                 );
             }
         }
@@ -316,7 +321,10 @@ app.get("/api/invoices", async (req, res) => {
 
         for (const inv of invoices.rows) {
             const items = await pool.query(`
-                SELECT ii.*, m.name
+                SELECT ii.id, ii.invoice_id, ii.metal_id, ii.weight, ii.price, ii.sum,
+                       ii.contamination_rate as "contaminationRate",
+                       ii.weight_with_contamination as "weightWithContamination",
+                       m.name
                 FROM invoice_items ii
                 LEFT JOIN metals m ON ii.metal_id = m.id
                 WHERE ii.invoice_id = $1

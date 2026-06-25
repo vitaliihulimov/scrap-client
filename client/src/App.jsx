@@ -436,11 +436,11 @@ export default function App() {
             invoice.items.forEach(item => {
                 if (allMetals[item.name]) {
                     const weight = Number(item.weight) || 0;
-                    const weightWithCont = item.weightWithContamination || roundWeightWithContamination(weight, item.contaminationRate || 0);
+                    const weightWithCont = Number(item.weightWithContamination) || roundWeightWithContamination(Number(weight), Number(item.contaminationRate) || 0);
                     const amount = item.sum || 0;
-                    allMetals[item.name].totalWeight += weight;
-                    allMetals[item.name].totalWeightWithCont += weightWithCont;
-                    allMetals[item.name].totalAmount += amount;
+                    allMetals[item.name].totalWeight += Number(weight);
+                    allMetals[item.name].totalWeightWithCont += Number(weightWithCont);
+                    allMetals[item.name].totalAmount += Number(amount);
                     allMetals[item.name].hasTransactions = true;
                     allMetals[item.name].transactions.push({ weight, weightWithCont, price: item.price, contaminationRate: item.contaminationRate || 0, amount });
                     totalDayAmount += amount;
@@ -454,10 +454,14 @@ export default function App() {
         });
 
         const sortedMetals = Object.values(allMetals).filter(m => m.hasTransactions).sort((a, b) => a.id - b.id);
+        console.log('dayInvoices:', dayInvoices);
+        console.log('sortedMetals:', sortedMetals);
+        console.log('totalDayAmount:', totalDayAmount);
         generateReportPDF(selectedDate, sortedMetals, dayInvoices, totalDayAmount);
     };
 
     const generateReportPDF = (date, metalStats, dayInvoices, totalDayAmount) => {
+        console.log('generateReportPDF called', { date, metalStats, dayInvoices, totalDayAmount });
         const printWindow = window.open('', '_blank');
         if (!printWindow) { alert("Дозвольте спливаючі вікна"); return; }
         const reportDateStr = date.toLocaleDateString('uk-UA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });

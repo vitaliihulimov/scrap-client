@@ -443,13 +443,13 @@ export default function App() {
                 if (allMetals[item.name]) {
                     const weight = Number(item.weight) || 0;
                     const weightWithCont = Number(item.weightWithContamination) || roundWeightWithContamination(Number(weight), Number(item.contaminationRate) || 0);
-                    const amount = item.sum || 0;
+                    const amount = Number(item.sum) || 0;
                     allMetals[item.name].totalWeight += Number(weight);
                     allMetals[item.name].totalWeightWithCont += Number(weightWithCont);
                     allMetals[item.name].totalAmount += Number(amount);
                     allMetals[item.name].hasTransactions = true;
                     allMetals[item.name].transactions.push({ weight, weightWithCont, price: item.price, contaminationRate: item.contaminationRate || 0, amount });
-                    totalDayAmount += amount;
+                    totalDayAmount += Number(amount);
                 }
             });
         });

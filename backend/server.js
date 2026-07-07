@@ -80,6 +80,8 @@ const initDB = async () => {
         await client.query(`ALTER TABLE metals ADD COLUMN IF NOT EXISTS current_price NUMERIC NOT NULL DEFAULT 0;`).catch(() => { });
         await client.query(`ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS contamination_rate NUMERIC DEFAULT 0;`).catch(() => { });
         await client.query(`ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS weight_with_contamination NUMERIC DEFAULT 0;`).catch(() => { });
+        await client.query(`ALTER TABLE invoice_items ALTER COLUMN price TYPE NUMERIC;`).catch(() => { }); // ← додай
+        await client.query(`ALTER TABLE invoices ALTER COLUMN total TYPE NUMERIC;`).catch(() => { }); // ← і це теж на всяк випадок
 
         // Дефолтний користувач
         const userCount = await client.query("SELECT COUNT(*) as count FROM users");
@@ -295,6 +297,7 @@ app.post("/api/invoices", async (req, res) => {
         const invoiceId = inv.rows[0].id;
 
         for (const i of items) {
+            console.log('item:', i.name, 'weight:', i.weight, 'sum:', i.sum, 'weightWithCont:', i.weightWithContamination);
             const weight = Number(i.weight) || 0;
             if (weight > 0) {
                 const contRate = Number(i.contaminationRate) || 0;

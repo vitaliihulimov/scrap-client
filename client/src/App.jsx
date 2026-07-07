@@ -51,7 +51,7 @@ export default function App() {
             "Стакан маленький": "Стак мал", "ОЦС": "ОЦС", "БРАЖ": "БРАЖ",
             "Алюмінієвий провод": "Ал пров", "Алюміній піщевий": "Ал піщ",
             "Алюмінієвий профіль": "Ал проф", "Алюмінієві діскі": "Ал діск",
-            "Алюміній побутовий": "Ал поб", "АМГ": "АМГ", "Алюмінієва банка": "Ал бан",
+            "Алюміній побутовий": "Ал побут", "АМГ": "АМГ", "Алюмінієва банка": "Ал бан",
             "Алюмінієвий радіатор": "Ал рад", "Алюміній самолет": "Ал сам",
             "Алюміній военка": "Ал воєн", "Алюміній моторняк": "Ал мот",
             "Алюмінієва стружка": "Ал стр", "Алюмінієвий скрап": "Ал скрап",
@@ -550,7 +550,9 @@ export default function App() {
             if (name.length > 5) name = name.substring(0, 5);
             name = name.padEnd(5, ' ');
             const rate = (item.contaminationRate || 0).toString().padStart(3, ' ');
-            const priceStr = Math.floor(item.price || 0).toString().padStart(4, ' ');
+            const priceStr = Number(item.price || 0) % 1 === 0
+                ? Math.floor(item.price || 0).toString().padStart(4, ' ')
+                : Number(item.price || 0).toFixed(1).padStart(4, ' ');
             const weightStr = (Number(item.weight) || 0).toFixed(1).padStart(4, ' ');
             const weightWithContStr = (Number(item.weightWithContamination) || 0).toFixed(1).padStart(4, ' ');
             const sumStr = (item.sum || 0).toString().padStart(4, ' ');

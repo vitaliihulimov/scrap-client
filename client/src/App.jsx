@@ -443,7 +443,7 @@ export default function App() {
                 if (allMetals[item.name]) {
                     const weight = Number(item.weight) || 0;
                     const weightWithCont = Number(item.weightWithContamination) || roundWeightWithContamination(Number(weight), Number(item.contaminationRate) || 0);
-                    const amount = Number(item.sum) || 0;
+                    const amount = isFinite(Number(item.sum)) ? Math.abs(Number(item.sum)) : 0;
                     allMetals[item.name].totalWeight += Number(weight);
                     allMetals[item.name].totalWeightWithCont += Number(weightWithCont);
                     allMetals[item.name].totalAmount += Number(amount);
@@ -463,7 +463,8 @@ export default function App() {
         console.log('dayInvoices:', dayInvoices);
         console.log('sortedMetals:', sortedMetals);
         console.log('totalDayAmount:', totalDayAmount);
-        generateReportPDF(selectedDate, sortedMetals, dayInvoices, totalDayAmount);
+        const safeTotalDayAmount = isFinite(totalDayAmount) ? Math.floor(totalDayAmount) : 0;
+        generateReportPDF(selectedDate, sortedMetals, dayInvoices, safeTotalDayAmount);
     };
 
     const generateReportPDF = (date, metalStats, dayInvoices, totalDayAmount) => {
@@ -649,7 +650,7 @@ export default function App() {
             return sortAsc ? dB - dA : dA - dB;
         });
 
-    const totalFiltered = filteredInvoices.reduce((sum, i) => sum + (i.total || 0), 0);
+    const totalFiltered = filteredInvoices.reduce((sum, i) => sum + (Number(i.total) || 0), 0);
 
     if (loading) return <div style={{ padding: 40, color: 'white', textAlign: 'center', fontSize: '1.2rem' }}>⏳ Завантаження даних з сервера...</div>;
 

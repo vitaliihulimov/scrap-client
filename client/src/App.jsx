@@ -456,7 +456,7 @@ export default function App() {
 
         Object.keys(allMetals).forEach(name => {
             const m = allMetals[name];
-            if (m.totalWeightWithCont > 0) m.averagePrice = Math.round((m.totalAmount / m.totalWeightWithCont) * 100) / 100;
+            if (m.totalWeight > 0) m.averagePrice = Math.round((m.totalAmount / m.totalWeight) * 100) / 100;
         });
 
         const sortedMetals = Object.values(allMetals).filter(m => m.hasTransactions).sort((a, b) => a.id - b.id);

@@ -636,13 +636,28 @@ export default function App() {
         }
     };
 
+    const today = new Date().toISOString().split('T')[0];
+
     const filteredInvoices = invoices
         .filter(inv => {
-            if (!fromDate && !toDate) return true;
             if (!inv.created_at) return false;
-            const d = new Date(inv.created_at); d.setHours(0, 0, 0, 0);
-            if (fromDate) { const f = new Date(fromDate); f.setHours(0, 0, 0, 0); if (d < f) return false; }
-            if (toDate) { const t = new Date(toDate); t.setHours(23, 59, 59, 999); if (d > t) return false; }
+            const d = new Date(inv.created_at);
+            d.setHours(0, 0, 0, 0);
+
+            if (fromDate) {
+                const f = new Date(fromDate); f.setHours(0, 0, 0, 0);
+                if (d < f) return false;
+            } else {
+                // Якщо дата не вибрана — показуємо тільки сьогодні
+                const todayDate = new Date(); todayDate.setHours(0, 0, 0, 0);
+                if (d < todayDate) return false;
+            }
+
+            if (toDate) {
+                const t = new Date(toDate); t.setHours(23, 59, 59, 999);
+                if (d > t) return false;
+            }
+
             return true;
         })
         .sort((a, b) => {

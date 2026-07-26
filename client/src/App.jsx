@@ -33,11 +33,11 @@ export default function App() {
     const roundWeightWithContamination = (weight, contaminationRate) => {
         if (!weight || weight <= 0) return 0;
         const cleanWeight = weight * (1 - contaminationRate / 100);
-        if (cleanWeight < 10) {
-            // до 10 кг — обрізання до 2 знаків (0.01 кг)
+        if (cleanWeight < 100) {
+            // до 100 кг — обрізання до 2 знаків (0.01 кг)
             return Math.floor(cleanWeight * 100) / 100;
         } else {
-            // від 10 кг — обрізання до 1 знаку (0.1 кг)
+            // від 100 кг — обрізання до 1 знаку (0.1 кг)
             return Math.floor(cleanWeight * 10) / 10;
         }
     };
@@ -562,8 +562,8 @@ export default function App() {
                 : Number(item.price || 0).toFixed(1).padStart(4, ' ');
             const w = Number(item.weight) || 0;
             const wc = Number(item.weightWithContamination) || 0;
-            const weightStr = w.toFixed(w < 10 ? 2 : 1).padStart(5, ' ');
-            const weightWithContStr = wc.toFixed(wc < 10 ? 2 : 1).padStart(5, ' ');
+            const weightStr = w.toFixed(w < 100 ? 2 : 1).padStart(5, ' ');
+            const weightWithContStr = wc.toFixed(wc < 100 ? 2 : 1).padStart(5, ' ');
             const sumStr = (item.sum || 0).toString().padStart(4, ' ');
             receipt += `${name} ${rate} ${priceStr} ${weightStr} ${weightWithContStr} ${sumStr}\n`;
         });
